@@ -412,10 +412,18 @@
             return false;
         };
 
+        /**
+         * Calculates scores based on the average of student metrics, making them size-independent.
+         */
         const calculateGroupScore = (group) => {
             let totalBehavior = 0;
             let totalAcademic = 0;
             let leaderCount = 0;
+            const size = group.length;
+
+            if (size === 0) {
+                 return { totalBehavior: 0, totalAcademic: 0, leaderCount: 0, avgBehavior: 0, avgAcademic: 0, avgTotalScore: 0, size: 0 };
+            }
 
             for (const student of group) {
                 totalBehavior += Number(student.behavior);
@@ -424,20 +432,36 @@
                     leaderCount++;
                 }
             }
-            return { totalBehavior, totalAcademic, leaderCount, totalScore: totalBehavior + totalAcademic, size: group.length };
+
+            const avgBehavior = totalBehavior / size;
+            const avgAcademic = totalAcademic / size;
+
+            return {
+                totalBehavior, // Kept for reference but not used in SD
+                totalAcademic, // Kept for reference but not used in SD
+                avgBehavior,
+                avgAcademic,
+                leaderCount,
+                // The combined average score used for calculating standard deviation (balance)
+                avgTotalScore: avgBehavior + avgAcademic,
+                size
+            };
         };
 
         /**
-         * Calculates the standard deviation of total scores across a set of group statistics.
-         * @param {Array<Object>} groupsStats - Array of objects, each containing a 'totalScore'.
+         * Calculates the standard deviation of combined average scores across a set of group statistics.
+         * @param {Array<Object>} groupsStats - Array of objects, each containing an 'avgTotalScore'.
          * @returns {number} The standard deviation.
          */
         const calculateStdDev = (groupsStats) => {
-            if (groupsStats.length <= 1) return 0;
+            // Only calculate SD for groups that actually contain students
+            const nonZeroStats = groupsStats.filter(s => s.size > 0);
+            if (nonZeroStats.length <= 1) return 0;
 
-            const scores = groupsStats.map(s => s.totalScore);
-            const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-            const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / scores.length;
+            // Use avgTotalScore for standard deviation calculation
+            const scores = nonZeroStats.map(s => s.avgTotalScore);
+            const mean = scores.reduce((sum, score) => sum + score, 0) / nonZeroStats.length;
+            const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / nonZeroStats.length;
             return Math.sqrt(variance);
         };
 
@@ -518,7 +542,7 @@
                     }
                 }
 
-                // --- 2. Assign Remaining Students using Global Balance (Standard Deviation) ---
+                // --- 2. Assign Remaining Students using Global Balance (Standard Deviation of Averages) ---
                 if (success) {
                     let unassignedStudents = allStudents.filter(s => !assignedStudentIds.has(s.id));
 
@@ -554,6 +578,7 @@
 
                             const hypotheticalGroupStats = hypotheticalGroups.map(g => calculateGroupScore(g));
 
+                            // This calculates SD based on the *average* score of the hypothetical groups
                             const currentStdDev = calculateStdDev(hypotheticalGroupStats);
                             const tentativeStats = hypotheticalGroupStats[i];
 
@@ -613,7 +638,8 @@
             document.getElementById('results-card').style.display = 'block';
 
             groups.forEach((group, index) => {
-                const { totalBehavior, totalAcademic, leaderCount } = calculateGroupScore(group);
+                // Now using the average scores for display
+                const { avgBehavior, avgAcademic, leaderCount, totalBehavior, totalAcademic } = calculateGroupScore(group);
 
                 const groupElement = document.createElement('div');
                 groupElement.className = 'bg-teal-50 p-4 rounded-lg border border-teal-200';
@@ -623,11 +649,11 @@
                     <div class="flex flex-wrap gap-4 text-sm mb-3">
                         <div class="flex items-center text-gray-700">
                             <i class="fas fa-face-smile w-4 h-4 mr-1 text-green-500"></i>
-                            Total Behavior Score: <span class="font-medium ml-1">${totalBehavior}</span>
+                            Avg. Behavior Score: <span class="font-medium ml-1">${avgBehavior.toFixed(2)}</span>
                         </div>
                         <div class="flex items-center text-gray-700">
                             <i class="fas fa-book w-4 h-4 mr-1 text-yellow-500"></i>
-                            Total Academic Score: <span class="font-medium ml-1">${totalAcademic}</span>
+                            Avg. Academic Score: <span class="font-medium ml-1">${avgAcademic.toFixed(2)}</span>
                         </div>
                         <div class="flex items-center text-gray-700">
                             <svg class="w-4 h-4 mr-1 text-purple-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>
