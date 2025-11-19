@@ -131,7 +131,7 @@
         const ACADEMIC_SCORES = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1 };
         const BEHAVIOR_OPTIONS = [1, 2, 3, 4, 5];
         const ACADEMIC_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
-        const ROLE_OPTIONS = ['Other', 'Leader', 'Bully', 'Victim'];
+        const ROLE_OPTIONS = ['-', 'Leader', 'Bully', 'Victim'];
 
         const generateId = () => Math.random().toString(36).substring(2, 9);
 
@@ -281,7 +281,7 @@
                 name: `Student ${students.length + 1}`,
                 behavior: 3,
                 academics: 'C',
-                role: 'Other'
+                role: '-'
             };
             students.push(newStudent);
             window.renderStudentList();
@@ -293,9 +293,9 @@
                 students = [
                     { id: generateId(), name: 'Student 1', behavior: 5, academics: 'A', role: 'Leader' },
                     { id: generateId(), name: 'Student 2', behavior: 1, academics: 'E', role: 'Victim' },
-                    { id: generateId(), name: 'Student 3', behavior: 3, academics: 'C', role: 'Other' },
+                    { id: generateId(), name: 'Student 3', behavior: 3, academics: 'C', role: '-' },
                     { id: generateId(), name: 'Student 4', behavior: 4, academics: 'B', role: 'Bully' },
-                    { id: generateId(), name: 'Student 5', behavior: 2, academics: 'D', role: 'Other' },
+                    { id: generateId(), name: 'Student 5', behavior: 2, academics: 'D', role: '-' },
                     { id: generateId(), name: 'Student 6', behavior: 5, academics: 'A', role: 'Leader' }
                 ];
             }
