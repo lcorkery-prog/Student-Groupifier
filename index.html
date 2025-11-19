@@ -4,501 +4,491 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Balanced Student Group Generator</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- jsPDF and html2canvas for PDF Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.3/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJc5fS5Wp6FzHnCgVf7o/Q6nK14QW6J5fS5Wp6FzHnCgVf7o/Q6nK14QW6J5Nf27Wl42gO3K6bB1l5z5Fp/4wB6m6a4A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Nunito', 'sans-serif'],
-                    },
-                }
-            }
-        }
-    </script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7fafc; /* Light gray background */
+            padding: 20px;
+        }
         .card {
-            background-color: #f8fafc;
-            padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            background-color: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
             border: 1px solid #e2e8f0;
         }
-
         .input-field {
             width: 100%;
-            padding: 0.5rem;
-            border: 1px solid #d1d5db;
-            border-radius: 0.5rem;
-            transition: all 0.15s ease-in-out;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            transition: border-color 0.2s;
         }
-
+        .input-field:focus {
+            border-color: #0d9488; /* Teal-600 */
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.3);
+        }
         .btn-primary {
-            background-color: #10b981;
+            background-color: #0d9488;
             color: white;
-            font-weight: 800;
-            font-size: 1.5rem;
-            padding: 1rem 2rem;
-            border-radius: 0.75rem;
-            transition: all 0.2s ease;
-            box-shadow: 0 8px 20px -6px rgba(16, 185, 129, 0.7);
-            transform: scale(1);
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 700;
+            transition: background-color 0.3s, transform 0.1s;
+            box-shadow: 0 4px #0f766e;
         }
-        .btn-primary:hover {
-            background-color: #059669;
-            transform: scale(1.01);
+        .btn-primary:hover:not(:disabled) {
+            background-color: #0f766e;
         }
-
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(2px);
+            box-shadow: 0 2px #0f766e;
+        }
+        .btn-primary:disabled {
+            background-color: #a7f3d0;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
         .btn-secondary {
-            background-color: #e5e7eb;
-            color: #1f2937;
+            background-color: #f0fdfa;
+            color: #0d9488;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid #0d9488;
             font-weight: 600;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            transition: all 0.15s ease;
+            transition: background-color 0.3s;
         }
         .btn-secondary:hover {
-            background-color: #d1d5db;
+            background-color: #ccfbf1;
         }
-
         .btn-export {
-            background-color: #4b5563;
+            background-color: #3b82f6;
             color: white;
-            font-weight: 500;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            transition: all 0.15s ease;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: background-color 0.3s;
         }
         .btn-export:hover {
-            background-color: #374151;
+            background-color: #2563eb;
         }
-
         .btn-pdf {
-            background-color: #4f46e5;
+            background-color: #ef4444;
             color: white;
-            font-weight: 500;
-            padding: 0.5rem 1rem;
-            border-radius: 0.5rem;
-            transition: all 0.15s ease;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: background-color 0.3s;
         }
         .btn-pdf:hover {
-            background-color: #4338ca;
+            background-color: #dc2626;
         }
-
+        /* Loading Spinner */
         .spinner {
             border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid #fff;
             border-radius: 50%;
-            width: 1.5rem;
-            height: 1.5rem;
+            border-top: 4px solid #ffffff;
+            width: 20px;
+            height: 20px;
             animation: spin 1s linear infinite;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .dropdown {
-            padding: 0.5rem;
-            border: 1px solid #d1d5db;
-            border-radius: 0.5rem;
-            appearance: none;
-            background-color: white;
-            padding-right: 2rem;
-        }
-        /* Style for the Firebase message (Now unused, but keeping the ID just in case) */
-        #firebase-status {
-            display: none; /* Hide the status element */
-        }
     </style>
 </head>
-<body class="bg-white min-h-screen p-4 sm:p-8 font-sans">
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
+<body class="min-h-screen">
     <script>
-        // --- Application State (Fully Local) ---
+        // --- GLOBAL STATE ---
         let students = [];
-        let mustBeTogether = [];
-        let conflictConstraints = [];
+        let mustBeTogether = []; // Array of [studentId1, studentId2]
+        let conflictConstraints = []; // Array of [studentId1, studentId2, studentId3, ...] where no two can be together
+        let currentRosterName = "Default Roster";
         let lastGeneratedGroups = [];
-        const currentRosterName = "Local Roster"; // Used for export naming
 
-        const ACADEMIC_SCORES = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1 };
-        const BEHAVIOR_OPTIONS = [1, 2, 3, 4, 5];
-        const ACADEMIC_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
-        const ROLE_OPTIONS = ['Other', 'Leader', 'Bully', 'Victim'];
+        // Constants for the Group Generation Algorithm
+        const epsilon = 1e-9; // Small number for floating point comparisons
+        const SD_TOLERANCE_FOR_SIZE_BIAS = 0.5; // Allow a group to be chosen if its SD is only slightly worse, but it is much smaller.
 
-        // Epsilon for float comparison
-        const epsilon = 0.0001; 
-        // Tolerance for size bias: allow the SD to be this much higher if the target group is significantly smaller
-        const SD_TOLERANCE_FOR_SIZE_BIAS = 0.05; 
+        // --- UTILITY FUNCTIONS ---
 
-        const generateId = () => Math.random().toString(36).substring(2, 9);
-
-        // --- UI RENDERING AND LOGIC ---
-
-        window.renderStudentList = () => {
-            const listContainer = document.getElementById('student-list');
-            listContainer.innerHTML = '';
-
-            const emptyMsg = document.getElementById('empty-roster-message');
-            students.length === 0 ? emptyMsg.classList.remove('hidden') : emptyMsg.classList.add('hidden');
-
-            students.forEach(student => {
-                const row = document.createElement('tr');
-                row.className = 'hover:bg-slate-100';
-                row.innerHTML = `
-                    <td class="p-3 whitespace-nowrap">
-                        <input type="text" value="${student.name}" onchange="window.updateStudent('${student.id}', 'name', this.value); window.renderStudentList()" class="input-field max-w-40 text-sm font-medium text-gray-900"/>
-                    </td>
-                    <td class="p-3 whitespace-nowrap">
-                        ${renderBehaviorDropdown(student.id, student.behavior)}
-                    </td>
-                    <td class="p-3 whitespace-nowrap">
-                        ${renderAcademicDropdown(student.id, student.academics)}
-                    </td>
-                    <td class="p-3 whitespace-nowrap">
-                        ${renderRoleDropdown(student.id, student.role)}
-                    </td>
-                    <td class="p-3 whitespace-nowrap text-sm font-medium">
-                        <button onclick="window.removeStudent('${student.id}')" class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        </button>
-                    </td>
-                `;
-                listContainer.appendChild(row);
-            });
-            window.renderConstraintSelectors();
+        /** Converts letter grades (A=4, B=3, C=2, D=1, E=0) to a numeric score. */
+        const gradeToScore = (grade) => {
+            const grades = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1, 'F': 0 };
+            return grades[grade.toUpperCase()] || 0;
         };
 
-        const renderBehaviorDropdown = (studentId, currentVal) => {
-            let options = BEHAVIOR_OPTIONS.map(val =>
-                `<option value="${val}" ${currentVal == val ? 'selected' : ''}>${val}</option>`
-            ).join('');
-            return `<select onchange="window.updateStudent('${studentId}', 'behavior', this.value); window.renderStudentList()" class="dropdown text-sm">${options}</select>`;
-        };
-
-        const renderAcademicDropdown = (studentId, currentVal) => {
-            let options = ACADEMIC_OPTIONS.map(val =>
-                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
-            ).join('');
-            return `<select onchange="window.updateStudent('${studentId}', 'academics', this.value); window.renderStudentList()" class="dropdown text-sm">${options}</select>`;
-        };
-
-        const renderRoleDropdown = (studentId, currentVal) => {
-            let options = ROLE_OPTIONS.map(val =>
-                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
-            ).join('');
-            return `<select onchange="window.updateStudent('${studentId}', 'role', this.value); window.renderStudentList()" class="dropdown text-sm">${options}</select>`;
-        };
-
-
-        const renderSingleStudentSelector = (currentStudentId, constraintIndex, memberIndex, type) => {
-            const studentOptions = students.map(s =>
-                `<option value="${s.id}" ${s.id === currentStudentId ? 'selected' : ''}>${s.name}</option>`
-            ).join('');
-
-            const onChangeHandler = type === 'together'
-                ? `window.updateTogetherConstraint(${constraintIndex}, ${memberIndex}, this.value); window.renderConstraintSelectors()`
-                : `window.updateSeparationConstraint(${constraintIndex}, ${memberIndex}, this.value); window.renderConstraintSelectors()`;
-
-            return `
-                <select class="dropdown w-full text-sm" onchange="${onChangeHandler}">
-                    <option value="">-- Select Student --</option>
-                    ${studentOptions}
-                </select>
-            `;
-        };
-
-        window.renderConstraintSelectors = () => {
-            const togetherList = document.getElementById('must-be-together-list');
-            const conflictList = document.getElementById('conflict-constraints-list');
-
-            // Renders Must Be Together (Pairs)
-            togetherList.innerHTML = mustBeTogether.map((constraint, index) =>
-                renderTogetherConstraintRow(constraint, index)
-            ).join('');
-
-            // Renders Must Be Separated (Groups)
-            conflictList.innerHTML = conflictConstraints.map((constraint, index) =>
-                renderSeparationConstraintGroup(constraint, index)
-            ).join('');
-        };
-
-        const renderTogetherConstraintRow = (constraint, index) => {
-            return `
-                <div class="flex items-center space-x-2 p-3 bg-white rounded-lg border">
-                    <div class="flex-grow space-y-1">
-                        ${renderSingleStudentSelector(constraint[0], index, 0, 'together')}
-                        <span class="text-xs text-gray-500 block text-center font-semibold text-teal-600">MUST BE WITH</span>
-                        ${renderSingleStudentSelector(constraint[1], index, 1, 'together')}
-                    </div>
-                    <button onclick="window.removeConstraint(${index}, 'together'); window.renderConstraintSelectors()" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove constraint">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-            `;
-        };
-
-        const renderSeparationConstraintGroup = (constraint, constraintIndex) => {
-            const studentNames = constraint.map(id => students.find(s => s.id === id)?.name || `[ID: ${id}]`).filter(name => !name.startsWith('[ID:')).join(', ');
-
-            return `
-                <div class="p-3 bg-red-50 rounded-lg border border-red-200">
-                    <div class="flex justify-between items-start mb-2">
-                        <h4 class="text-md font-semibold text-red-700">Separation Group ${constraintIndex + 1}</h4>
-                        <button onclick="window.removeConstraint(${constraintIndex}, 'conflict'); window.renderConstraintSelectors()" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove entire separation group">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        </button>
-                    </div>
-
-                    <p class="text-xs text-red-600 mb-2 font-medium">No two students from this list can be in the same team.</p>
-
-                    <div id="separation-members-${constraintIndex}" class="space-y-1 mb-3">
-                        ${constraint.map((id, memberIndex) => `
-                            <div class="flex items-center space-x-1">
-                                <span class="text-sm w-5 text-center text-red-500 font-bold">#${memberIndex + 1}</span>
-                                ${renderSingleStudentSelector(id, constraintIndex, memberIndex, 'conflict')}
-                                <button onclick="window.removeMemberFromSeparationConstraint(${constraintIndex}, ${memberIndex}); window.renderConstraintSelectors()"
-                                        class="text-gray-400 hover:text-red-500 p-1 transition" title="Remove student">
-                                    <i class="fas fa-times text-sm"></i>
-                                </button>
-                            </div>
-                        `).join('')}
-                    </div>
-
-                    <button onclick="window.addMemberToSeparationConstraint(${constraintIndex}); window.renderConstraintSelectors()"
-                            class="btn-secondary text-xs bg-red-100 text-red-600 hover:bg-red-200 mt-2">
-                        + Add Student to Group
-                    </button>
-                </div>
-            `;
-        };
-
-        window.addStudentRow = () => {
-            const newStudent = {
-                id: generateId(),
-                name: `Student ${students.length + 1}`,
-                behavior: 3,
-                academics: 'C',
-                role: 'Other'
+        /** Calculates the combined score (average behavior, average academic, leader count) for a group. */
+        const calculateGroupScore = (group) => {
+            if (group.length === 0) return {
+                avgBehavior: 0,
+                avgAcademic: 0,
+                leaderCount: 0,
+                scoreSum: 0,
+                size: 0
             };
-            students.push(newStudent);
-            window.renderStudentList();
+
+            const behaviorSum = group.reduce((sum, s) => sum + s.behavior, 0);
+            const academicSum = group.reduce((sum, s) => sum + s.academicScore, 0);
+            const leaderCount = group.filter(s => s.role === 'Leader').length;
+
+            const avgBehavior = behaviorSum / group.length;
+            const avgAcademic = academicSum / group.length;
+
+            // Combine scores for overall balancing: Academic is weighted slightly higher
+            const scoreSum = (avgBehavior * 1.0) + (avgAcademic * 1.5);
+
+            return { avgBehavior, avgAcademic, leaderCount, scoreSum, size: group.length };
         };
 
-        window.addDefaultStudents = () => {
-            if (students.length === 0) {
-                // Initialize with 6 default students for a fresh start
-                students = [
-                    { id: generateId(), name: 'Student 1', behavior: 5, academics: 'A', role: 'Leader' },
-                    { id: generateId(), name: 'Student 2', behavior: 1, academics: 'E', role: 'Victim' },
-                    { id: generateId(), name: 'Student 3', behavior: 3, academics: 'C', role: 'Other' },
-                    { id: generateId(), name: 'Student 4', behavior: 4, academics: 'B', role: 'Bully' },
-                    { id: generateId(), name: 'Student 5', behavior: 2, academics: 'D', role: 'Other' },
-                    { id: generateId(), name: 'Student 6', behavior: 5, academics: 'A', role: 'Leader' }
-                ];
-            }
-            window.renderStudentList();
-        }
+        /** Calculates the Standard Deviation of a set of group scores (for balancing). */
+        const calculateStdDev = (groupStats) => {
+            if (groupStats.length === 0) return 0;
+            
+            // Only consider groups with students
+            const scores = groupStats.filter(s => s.size > 0).map(s => s.scoreSum);
+            if (scores.length === 0) return 0;
 
-        window.updateStudent = (id, key, value) => {
-            const student = students.find(s => s.id === id);
-            if (student) {
-                student[key] = key === 'behavior' ? parseInt(value) : value;
-                // Re-render student list immediately only if the name changed, otherwise the dropdown update handles it.
-                if (key === 'name') {
-                    window.renderStudentList();
-                }
-            }
+            const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+            const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / scores.length;
+            return Math.sqrt(variance);
         };
 
-        window.removeStudent = (id) => {
-            students = students.filter(s => s.id !== id);
+        /** Checks if a student has an implicit or explicit conflict with any student in a target group. */
+        const hasConflict = (student, targetGroup, conflictConstraints) => {
+            const studentId = student.id;
+            const targetIds = targetGroup.map(s => s.id);
 
-            // Clean up mustBeTogether
-            mustBeTogether = mustBeTogether.filter(c => !c.includes(id));
+            // 1. Check for automatic Bully/Victim conflict
+            const hasRoleConflict = targetGroup.some(targetStudent =>
+                (student.role === 'Bully' && targetStudent.role === 'Victim') ||
+                (student.role === 'Victim' && targetStudent.role === 'Bully')
+            );
+            if (hasRoleConflict) return true;
 
-            // Clean up conflictConstraints (multi-student)
-            conflictConstraints = conflictConstraints.map(c => c.filter(memberId => memberId !== id)).filter(c => c.length >= 2);
-
-            window.renderStudentList();
-        };
-
-        window.addConstraint = (type) => {
-            if (type === 'together') {
-                mustBeTogether.push(["", ""]);
-            } else {
-                // Start a new multi-student separation constraint with 2 empty slots
-                conflictConstraints.push(["", ""]);
-            }
-            window.renderConstraintSelectors();
-        };
-
-        window.updateTogetherConstraint = (constraintIndex, studentIndexInConstraint, studentId) => {
-            if (mustBeTogether[constraintIndex]) {
-                mustBeTogether[constraintIndex][studentIndexInConstraint] = studentId;
-            }
-            // renderConstraintSelectors is called in the onchange handler of the select element
-        };
-
-        window.updateSeparationConstraint = (constraintIndex, memberIndex, studentId) => {
-            if (conflictConstraints[constraintIndex]) {
-                conflictConstraints[constraintIndex][memberIndex] = studentId;
-            }
-            // renderConstraintSelectors is called in the onchange handler of the select element
-        };
-
-        window.addMemberToSeparationConstraint = (constraintIndex) => {
-             if (conflictConstraints[constraintIndex]) {
-                conflictConstraints[constraintIndex].push("");
-                window.renderConstraintSelectors();
-             }
-        };
-
-        window.removeMemberFromSeparationConstraint = (constraintIndex, memberIndex) => {
-            if (conflictConstraints[constraintIndex]) {
-                conflictConstraints[constraintIndex].splice(memberIndex, 1);
-                // If the constraint group size drops below 2, remove the constraint entirely
-                if (conflictConstraints[constraintIndex].length < 2) {
-                    window.removeConstraint(constraintIndex, 'conflict');
-                }
-                window.renderConstraintSelectors();
-            }
-        };
-
-
-        window.removeConstraint = (index, type) => {
-            if (type === 'together') {
-                mustBeTogether.splice(index, 1);
-            } else {
-                conflictConstraints.splice(index, 1);
-            }
-            window.renderConstraintSelectors();
-        };
-
-        const getAcademicScore = (grade) => ACADEMIC_SCORES[grade] || 0;
-
-        const hasConflict = (newStudent, currentGroup, allMultiSeparationConstraints) => {
-            const newStudentId = newStudent.id;
-
-            // --- 1. Check for automatic Bully/Victim conflict ---
-            const isNewStudentBully = newStudent.role === 'Bully';
-            const isNewStudentVictim = newStudent.role === 'Victim';
-
-            for (const groupMember of currentGroup) {
-                const groupMemberRole = groupMember.role;
-
-                if ((isNewStudentBully && groupMemberRole === 'Victim') ||
-                    (isNewStudentVictim && groupMemberRole === 'Bully')) {
-                    return true;
-                }
-            }
-
-            // --- 2. Check for explicit Multi-Student Separation Conflict ---
-            for (const separationSet of allMultiSeparationConstraints) {
-                // Is the new student part of this separation set?
-                if (separationSet.includes(newStudentId)) {
-                    // Check if ANY existing group member is also in this separation set
-                    for (const groupMember of currentGroup) {
-                        if (separationSet.includes(groupMember.id)) {
-                             // Conflict: The group already contains another student from this set.
-                            return true;
-                        }
-                    }
+            // 2. Check against explicit multi-student separation constraints
+            // A conflict occurs if the current student ID, and any ID in the target group, 
+            // are both present in the same conflict constraint group.
+            for (const constraint of conflictConstraints) {
+                if (constraint.includes(studentId)) {
+                    // Check if any student currently in the group is also in this constraint
+                    const groupConflict = targetIds.some(targetId => constraint.includes(targetId));
+                    if (groupConflict) return true;
                 }
             }
 
             return false;
         };
 
-        /**
-         * Calculates scores based on the average of student metrics, making them size-independent.
-         */
-        const calculateGroupScore = (group) => {
-            let totalBehavior = 0;
-            let totalAcademic = 0;
-            let leaderCount = 0;
-            const size = group.length;
+        // --- DATA MANAGEMENT (Mock Persistence) ---
+        const loadStudents = () => {
+            try {
+                const storedData = JSON.parse(localStorage.getItem('studentGroupData'));
+                if (storedData) {
+                    students = storedData.students || [];
+                    mustBeTogether = storedData.mustBeTogether || [];
+                    conflictConstraints = storedData.conflictConstraints || [];
+                    currentRosterName = storedData.currentRosterName || "Local Roster";
+                }
+            } catch (e) {
+                console.error("Error loading state from localStorage:", e);
+            }
+            window.renderStudentRoster();
+            window.renderConstraints();
+        };
 
-            if (size === 0) {
-                 // Return zeroed stats if group is empty
-                 return { totalBehavior: 0, totalAcademic: 0, leaderCount: 0, avgBehavior: 0, avgAcademic: 0, avgTotalScore: 0, size: 0 };
+        const saveStudents = () => {
+            const dataToStore = { students, mustBeTogether, conflictConstraints, currentRosterName };
+            localStorage.setItem('studentGroupData', JSON.stringify(dataToStore));
+        };
+
+        const getStudentById = (id) => students.find(s => s.id === id);
+
+        // --- INITIAL DATA SETUP ---
+        window.addDefaultStudents = () => {
+            students = [
+                { id: crypto.randomUUID(), name: "Alice J.", behavior: 5, academics: 'A', academicScore: gradeToScore('A'), role: 'Leader' },
+                { id: crypto.randomUUID(), name: "Bob K.", behavior: 2, academics: 'D', academicScore: gradeToScore('D'), role: 'Victim' },
+                { id: crypto.randomUUID(), name: "Charlie L.", behavior: 4, academics: 'B', academicScore: gradeToScore('B'), role: '-' },
+                { id: crypto.randomUUID(), name: "David M.", behavior: 1, academics: 'C', academicScore: gradeToScore('C'), role: 'Bully' },
+                { id: crypto.randomUUID(), name: "Eve N.", behavior: 5, academics: 'A', academicScore: gradeToScore('A'), role: 'Leader' },
+                { id: crypto.randomUUID(), name: "Fiona O.", behavior: 3, academics: 'B', academicScore: gradeToScore('B'), role: '-' },
+                { id: crypto.randomUUID(), name: "George P.", behavior: 4, academics: 'E', academicScore: gradeToScore('E'), role: '-' },
+                { id: crypto.randomUUID(), name: "Hannah Q.", behavior: 3, academics: 'C', academicScore: gradeToScore('C'), role: '-' },
+            ];
+            mustBeTogether = [];
+            conflictConstraints = [];
+            currentRosterName = "Sample Roster";
+            saveStudents();
+            window.renderStudentRoster();
+            window.renderConstraints();
+            window.showMessage('success', 'Loaded sample student data for demonstration.');
+        };
+
+        // --- UI RENDER/INPUT HANDLERS ---
+        window.addStudentRow = (student = null) => {
+            const newStudent = student || {
+                id: crypto.randomUUID(),
+                name: '',
+                behavior: 3,
+                academics: 'C',
+                academicScore: gradeToScore('C'),
+                role: '-'
+            };
+            if (!student) {
+                students.push(newStudent);
+                saveStudents();
+            }
+            window.renderStudentRoster();
+        };
+
+        window.updateRosterFromInputs = (studentId, field, value) => {
+            const student = students.find(s => s.id === studentId);
+            if (!student) return;
+
+            if (field === 'name') {
+                student.name = value;
+            } else if (field === 'behavior') {
+                student.behavior = parseInt(value, 10);
+            } else if (field === 'academics') {
+                student.academics = value;
+                student.academicScore = gradeToScore(value);
+            } else if (field === 'role') {
+                student.role = value;
+            }
+            
+            saveStudents();
+            window.renderConstraints();
+            // Do not rerender the whole roster to keep input focus, only update constraints
+        };
+
+        window.removeStudent = (studentId) => {
+            students = students.filter(s => s.id !== studentId);
+
+            // Clean up constraints
+            mustBeTogether = mustBeTogether.filter(c => !c.includes(studentId));
+            conflictConstraints = conflictConstraints.map(c => c.filter(id => id !== studentId)).filter(c => c.length >= 2);
+
+            saveStudents();
+            window.renderStudentRoster();
+            window.renderConstraints();
+            window.showMessage('success', 'Student removed and constraints updated.');
+        };
+
+        window.renderStudentRoster = () => {
+            const list = document.getElementById('student-list');
+            list.innerHTML = '';
+            
+            const emptyMessage = document.getElementById('empty-roster-message');
+            if (students.length === 0) {
+                emptyMessage.classList.remove('hidden');
+                return;
+            } else {
+                emptyMessage.classList.add('hidden');
             }
 
-            for (const student of group) {
-                totalBehavior += Number(student.behavior);
-                totalAcademic += Number(student.academicScore);
-                if (student.role === 'Leader') {
-                    leaderCount++;
+            students.forEach(student => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 transition duration-150';
+
+                // Name input
+                const nameCell = `<td class="p-3 whitespace-nowrap"><input type="text" value="${student.name}" oninput="window.updateRosterFromInputs('${student.id}', 'name', this.value)" placeholder="Student Name" class="input-field w-full sm:w-48"/></td>`;
+
+                // Behavior input (1-5)
+                const behaviorOptions = [5, 4, 3, 2, 1].map(b => `<option value="${b}" ${student.behavior === b ? 'selected' : ''}>${b}</option>`).join('');
+                const behaviorCell = `<td class="p-3 whitespace-nowrap"><select onchange="window.updateRosterFromInputs('${student.id}', 'behavior', this.value)" class="input-field w-16">${behaviorOptions}</select></td>`;
+
+                // Academic input (A-E)
+                const academicGrades = ['A', 'B', 'C', 'D', 'E'];
+                const academicOptions = academicGrades.map(g => `<option value="${g}" ${student.academics === g ? 'selected' : ''}>${g}</option>`).join('');
+                const academicCell = `<td class="p-3 whitespace-nowrap"><select onchange="window.updateRosterFromInputs('${student.id}', 'academics', this.value)" class="input-field w-16">${academicOptions}</select></td>`;
+
+                // Role input
+                const roles = ['-', 'Leader', 'Bully', 'Victim'];
+                const roleOptions = roles.map(r => `<option value="${r}" ${student.role === r ? 'selected' : ''}>${r}</option>`).join('');
+                const roleCell = `<td class="p-3 whitespace-nowrap"><select onchange="window.updateRosterFromInputs('${student.id}', 'role', this.value)" class="input-field w-24">${roleOptions}</select></td>`;
+
+                // Delete button
+                const deleteCell = `<td class="p-3 text-right"><button onclick="window.removeStudent('${student.id}')" class="text-red-500 hover:text-red-700 transition duration-150 p-2 rounded-full"><i class="fas fa-trash-alt"></i></button></td>`;
+
+                row.innerHTML = nameCell + behaviorCell + academicCell + roleCell + deleteCell;
+                list.appendChild(row);
+            });
+        };
+
+        window.createStudentSelect = (id, constraintType, constraintIndex, studentIndexInConstraint, selectedId = '') => {
+            const select = document.createElement('select');
+            select.id = id;
+            select.className = 'input-field w-full text-sm';
+            select.onchange = (e) => window.updateConstraint(constraintType, constraintIndex, studentIndexInConstraint, e.target.value);
+            
+            let optionsHtml = '<option value="" disabled selected>Select Student</option>';
+            optionsHtml += students.map(s => 
+                `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${s.name || 'Unnamed Student'}</option>`
+            ).join('');
+            select.innerHTML = optionsHtml;
+            return select;
+        };
+
+        window.renderConstraints = () => {
+            const togetherList = document.getElementById('must-be-together-list');
+            const conflictList = document.getElementById('conflict-constraints-list');
+            togetherList.innerHTML = '';
+            conflictList.innerHTML = '';
+
+            // Render Must Be Together (Pairs)
+            mustBeTogether.forEach((constraint, index) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center space-x-2 p-3 bg-white border border-green-100 rounded-lg shadow-sm';
+                
+                const select1 = window.createStudentSelect(`together-select-${index}-0`, 'together', index, 0, constraint[0]);
+                const select2 = window.createStudentSelect(`together-select-${index}-1`, 'together', index, 1, constraint[1]);
+                
+                const removeButton = `<button onclick="window.removeConstraint('together', ${index})" class="text-red-500 hover:text-red-700 text-lg ml-2"><i class="fas fa-circle-xmark"></i></button>`;
+
+                div.appendChild(select1);
+                div.innerHTML += '<span class="text-gray-500 font-semibold"> & </span>';
+                div.appendChild(select2);
+                div.innerHTML += removeButton;
+                togetherList.appendChild(div);
+            });
+
+            // Render Must Be Separated (Groups)
+            conflictConstraints.forEach((constraint, index) => {
+                const div = document.createElement('div');
+                div.className = 'p-3 bg-white border border-red-100 rounded-lg shadow-sm';
+                
+                const selectContainer = document.createElement('div');
+                selectContainer.className = 'flex flex-wrap gap-2 mb-2';
+
+                constraint.forEach((studentId, studentIndex) => {
+                    const select = window.createStudentSelect(`conflict-select-${index}-${studentIndex}`, 'conflict', index, studentIndex, studentId);
+                    selectContainer.appendChild(select);
+                });
+
+                const controls = document.createElement('div');
+                controls.className = 'flex justify-between items-center mt-2';
+                
+                const addButton = `<button onclick="window.updateConstraint('conflict', ${index}, ${constraint.length}, '')" class="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center"><i class="fas fa-plus mr-1"></i> Add Member</button>`;
+                const removeConstraintButton = `<button onclick="window.removeConstraint('conflict', ${index})" class="text-red-500 hover:text-red-700 text-sm"><i class="fas fa-trash-alt mr-1"></i> Remove Group</button>`;
+                
+                controls.innerHTML = addButton + removeConstraintButton;
+
+                div.appendChild(selectContainer);
+                div.appendChild(controls);
+                conflictList.appendChild(div);
+            });
+        };
+
+        window.addConstraint = (type) => {
+            if (students.length < 2) {
+                window.showMessage('warning', 'You need at least two students to add a constraint.');
+                return;
+            }
+            if (type === 'together') {
+                mustBeTogether.push(['', '']);
+            } else if (type === 'conflict') {
+                // Initialize with two empty strings, requiring at least 2 for separation
+                conflictConstraints.push(['', '']);
+            }
+            saveStudents();
+            window.renderConstraints();
+        };
+
+        window.updateConstraint = (type, constraintIndex, studentIndex, studentId) => {
+            let constraintArray;
+            if (type === 'together') {
+                constraintArray = mustBeTogether;
+            } else if (type === 'conflict') {
+                constraintArray = conflictConstraints;
+            }
+
+            if (studentIndex >= constraintArray[constraintIndex].length) {
+                // Add new member to conflict constraint
+                constraintArray[constraintIndex].push(studentId);
+            } else {
+                // Update existing member
+                constraintArray[constraintIndex][studentIndex] = studentId;
+                
+                // For conflict groups, check for duplicates and remove if necessary
+                if (type === 'conflict') {
+                    const currentConstraint = constraintArray[constraintIndex];
+                    const uniqueStudents = [...new Set(currentConstraint.filter(id => id !== ''))];
+                    if (currentConstraint.filter(id => id !== '').length !== uniqueStudents.length) {
+                        window.showMessage('warning', 'Duplicate students were removed from the separation group.');
+                        constraintArray[constraintIndex] = uniqueStudents;
+                    }
+                    if (constraintArray[constraintIndex].length < 2) {
+                        constraintArray[constraintIndex] = ['', '']; // Reset if too few members
+                    }
                 }
             }
 
-            const avgBehavior = totalBehavior / size;
-            const avgAcademic = totalAcademic / size;
-
-            return {
-                totalBehavior, // Kept for reference
-                totalAcademic, // Kept for reference
-                avgBehavior,
-                avgAcademic,
-                leaderCount,
-                // The combined average score used for calculating standard deviation (balance)
-                avgTotalScore: avgBehavior + avgAcademic,
-                size
-            };
+            saveStudents();
+            window.renderConstraints();
         };
 
-        /**
-         * Calculates the standard deviation of combined average scores across a set of group statistics.
-         * Note: Only groups with size > 0 are included in the calculation to ensure accurate variance based on current distribution.
-         * @param {Array<Object>} groupsStats - Array of objects, each containing an 'avgTotalScore'.
-         * @returns {number} The standard deviation.
-         */
-        const calculateStdDev = (groupsStats) => {
-            // Only calculate SD for groups that actually contain students (size > 0)
-            const nonZeroStats = groupsStats.filter(s => s.size > 0);
-            if (nonZeroStats.length <= 1) return 0;
-
-            // Use avgTotalScore for standard deviation calculation
-            const scores = nonZeroStats.map(s => s.avgTotalScore);
-            const mean = scores.reduce((sum, score) => sum + score, 0) / nonZeroStats.length;
-            
-            // Bessel's correction (N-1) is commonly used for sample SD, but N is fine for population
-            const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / nonZeroStats.length; 
-            return Math.sqrt(variance);
+        window.removeConstraint = (type, index) => {
+            if (type === 'together') {
+                mustBeTogether.splice(index, 1);
+            } else if (type === 'conflict') {
+                conflictConstraints.splice(index, 1);
+            }
+            saveStudents();
+            window.renderConstraints();
+            window.showMessage('success', 'Constraint removed.');
         };
+
+
+        // --- CORE GROUP GENERATION ALGORITHM (Piece 2/2) ---
 
         window.generateGroups = () => {
-            const numGroups = parseInt(document.getElementById('num-groups').value);
-            const messageBox = document.getElementById('message-box');
-            messageBox.style.display = 'none';
-
-            if (students.length === 0 || numGroups <= 0 || numGroups > students.length) {
-                window.showMessage("error", "Please check your inputs: add students and ensure the number of groups is valid.");
-                return;
-            }
-
+            const numGroups = parseInt(document.getElementById('num-groups').value, 10);
+            const allStudents = students;
             const generateButton = document.getElementById('generate-button');
             const originalHtml = generateButton.innerHTML;
+            
+            window.showMessage('warning', 'Generating groups...');
             generateButton.disabled = true;
             generateButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating...</span>';
 
-            setTimeout(() => {
-                const allStudents = students.map(s => ({
-                    ...s,
-                    behavior: parseInt(s.behavior),
-                    academicScore: getAcademicScore(s.academics)
-                }));
+            if (allStudents.length === 0) {
+                window.showMessage('error', 'The roster is empty. Please add students first.');
+                generateButton.disabled = false;
+                generateButton.innerHTML = originalHtml;
+                return;
+            }
 
+            if (numGroups <= 0) {
+                window.showMessage('error', 'The number of groups must be 1 or more.');
+                generateButton.disabled = false;
+                generateButton.innerHTML = originalHtml;
+                return;
+            }
+
+            if (numGroups > allStudents.length) {
+                window.showMessage('error', `You cannot create ${numGroups} groups for only ${allStudents.length} students.`);
+                generateButton.disabled = false;
+                generateButton.innerHTML = originalHtml;
+                return;
+            }
+            
+            // Use a timeout to allow the spinner to render before the heavy calculation
+            setTimeout(() => {
                 // Filter and clean constraints
                 const validStudents = new Set(allStudents.map(s => s.id));
-                const isValidConstraintPair = (c) => validStudents.has(c[0]) && validStudents.has(c[1]);
+                const isValidConstraintPair = (c) => c.length === 2 && validStudents.has(c[0]) && validStudents.has(c[1]);
                 const isValidSeparationGroup = (c) => c.length >= 2 && c.every(id => validStudents.has(id));
 
                 const validMustBeTogether = mustBeTogether.filter(isValidConstraintPair);
@@ -519,6 +509,7 @@
                         continue;
                     }
 
+                    // Pre-check: Must Be Together students cannot have a conflict with each other
                     if (hasConflict(s1, [s2], validConflictConstraints)) {
                          window.showMessage("error", `Cannot satisfy 'Must Be Together' constraint: ${s1.name} and ${s2.name} have an automatic (Bully/Victim) or explicit conflict.`);
                          success = false;
@@ -646,7 +637,7 @@
 
                 } else {
                     lastGeneratedGroups = [];
-                    document.getElementById('results-card').style.display = 'none';
+                    document.getElementById('results-card').style.display = '-';
                 }
             }, 50);
         };
@@ -690,7 +681,7 @@
 
                             return `
                                 <li class="text-sm">
-                                    ${s.name} <span class="font-bold text-teal-700">(${s.behavior}${s.academics})</span>${roleText}
+                                    ${s.name} <span class="font-bold text-teal-700">(${s.behavior}/${s.academics})</span>${roleText}
                                 </li>
                             `;
                         }).join('')}
@@ -754,7 +745,7 @@
             const pdfButton = document.getElementById('pdf-export-content');
 
             pdfButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating PDF...</span>';
-            if (exportActions) exportActions.style.pointerEvents = 'none';
+            if (exportActions) exportActions.style.pointerEvents = '-';
 
             try {
                 const JsPDF = window.jspdf.jsPDF;
@@ -781,22 +772,39 @@
 
                 const pdf = new JsPDF('p', 'mm', 'a4');
 
-                pdf.addImage(imgData, 'PNG', 5, position + 5, imgWidth - 10, imgHeight);
-                heightLeft -= pageHeight;
+                // Add a title to the PDF
+                pdf.setFontSize(16);
+                pdf.text(`Group Results for ${currentRosterName}`, 10, 15);
+                
+                // Starting position after the title
+                position = 20;
 
-                while (heightLeft >= 0) {
-                    position = heightLeft - imgHeight;
+                // Scale image data to fit the page width and calculate its height
+                const contentWidth = 190; // Use 190mm width for margins
+                const contentHeight = canvas.height * contentWidth / canvas.width;
+
+                pdf.addImage(imgData, 'PNG', 10, position, contentWidth, contentHeight);
+                heightLeft = contentHeight;
+
+                let pageY = position + contentHeight;
+                let currentPage = 1;
+
+                while (heightLeft > pageHeight - position) {
+                    position = -(pageY - pageHeight * currentPage);
                     pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 5, position + 5, imgWidth - 10, imgHeight);
-                    heightLeft -= pageHeight;
+                    currentPage++;
+                    pdf.addImage(imgData, 'PNG', 10, position, contentWidth, contentHeight);
+                    heightLeft -= (pageHeight - (pageY - pageHeight * (currentPage - 1)));
+                    pageY += (pageHeight - (pageY - pageHeight * (currentPage - 1)));
                 }
+
 
                 pdf.save(`${currentRosterName.replace(/ /g, '_')}_groups.pdf`);
 
                 window.showMessage('success', 'Groups successfully exported to PDF.');
             } catch (error) {
                 console.error("PDF generation failed:", error);
-                window.showMessage('error', 'Failed to generate PDF.');
+                window.showMessage('error', 'Failed to generate PDF. Check the console for details.');
             } finally {
                 pdfButton.innerHTML = '<i class="fas fa-file-pdf mr-2"></i> Export to PDF';
                 if (exportActions) exportActions.style.pointerEvents = 'auto';
@@ -804,8 +812,14 @@
         };
 
         // --- Execution Start ---
-        // Load default students immediately since there is no database to wait for.
-        window.addDefaultStudents();
+        // Load data from local storage or use defaults
+        loadStudents();
+        // Fallback to default if no data is found after loading
+        if (students.length === 0) {
+             window.addDefaultStudents();
+        }
+        window.renderStudentRoster();
+        window.renderConstraints();
 
     </script>
 
@@ -813,6 +827,7 @@
     <div class="max-w-7xl mx-auto space-y-8">
         <header class="text-center py-6 bg-teal-600 rounded-xl shadow-lg relative">
             <h1 class="text-3xl sm:text-4xl font-extrabold text-white">🗂️ Balanced Student Group Generator</h1>
+            <p class="text-teal-200 mt-1">Efficiently create teams balanced by behavior, academics, and custom constraints.</p>
         </header>
 
         <div id="message-box" class="hidden p-3 rounded-lg text-sm font-medium transition duration-300"></div>
@@ -846,8 +861,11 @@
 
                 <div class="flex flex-wrap justify-between items-center mt-4">
                     <button onclick="window.addStudentRow()" class="btn-secondary flex items-center">
-                        <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        <svg class="w-5 h-5 mr-1" fill="-" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                         Add Student
+                    </button>
+                    <button onclick="window.addDefaultStudents()" class="btn-secondary flex items-center bg-blue-100 text-blue-600 border-blue-600 hover:bg-blue-200">
+                        <i class="fas fa-database mr-1"></i> Load Sample Roster
                     </button>
                 </div>
             </div>
@@ -903,8 +921,8 @@
         </div>
 
         <div id="results-card" class="card mt-8 hidden">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-3xl font-bold text-teal-700 flex items-center">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                <h2 class="text-3xl font-bold text-teal-700 flex items-center mb-4 sm:mb-0">
                     <i class="fas fa-users-gear mr-2"></i> Final Grouping Results
                 </h2>
                 <div id="export-actions-container" class="flex space-x-2 export-actions">
