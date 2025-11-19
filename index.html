@@ -131,7 +131,12 @@
         const ACADEMIC_SCORES = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1 };
         const BEHAVIOR_OPTIONS = [1, 2, 3, 4, 5];
         const ACADEMIC_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
-        const ROLE_OPTIONS = ['-', 'Leader', 'Bully', 'Victim'];
+        const ROLE_OPTIONS = ['Other', 'Leader', 'Bully', 'Victim'];
+
+        // Epsilon for float comparison
+        const epsilon = 0.0001; 
+        // Tolerance for size bias: allow the SD to be this much higher if the target group is significantly smaller
+        const SD_TOLERANCE_FOR_SIZE_BIAS = 0.05; 
 
         const generateId = () => Math.random().toString(36).substring(2, 9);
 
@@ -281,7 +286,7 @@
                 name: `Student ${students.length + 1}`,
                 behavior: 3,
                 academics: 'C',
-                role: '-'
+                role: 'Other'
             };
             students.push(newStudent);
             window.renderStudentList();
@@ -293,9 +298,9 @@
                 students = [
                     { id: generateId(), name: 'Student 1', behavior: 5, academics: 'A', role: 'Leader' },
                     { id: generateId(), name: 'Student 2', behavior: 1, academics: 'E', role: 'Victim' },
-                    { id: generateId(), name: 'Student 3', behavior: 3, academics: 'C', role: '-' },
+                    { id: generateId(), name: 'Student 3', behavior: 3, academics: 'C', role: 'Other' },
                     { id: generateId(), name: 'Student 4', behavior: 4, academics: 'B', role: 'Bully' },
-                    { id: generateId(), name: 'Student 5', behavior: 2, academics: 'D', role: '-' },
+                    { id: generateId(), name: 'Student 5', behavior: 2, academics: 'D', role: 'Other' },
                     { id: generateId(), name: 'Student 6', behavior: 5, academics: 'A', role: 'Leader' }
                 ];
             }
@@ -422,6 +427,7 @@
             const size = group.length;
 
             if (size === 0) {
+                 // Return zeroed stats if group is empty
                  return { totalBehavior: 0, totalAcademic: 0, leaderCount: 0, avgBehavior: 0, avgAcademic: 0, avgTotalScore: 0, size: 0 };
             }
 
@@ -437,8 +443,8 @@
             const avgAcademic = totalAcademic / size;
 
             return {
-                totalBehavior, // Kept for reference but not used in SD
-                totalAcademic, // Kept for reference but not used in SD
+                totalBehavior, // Kept for reference
+                totalAcademic, // Kept for reference
                 avgBehavior,
                 avgAcademic,
                 leaderCount,
@@ -450,18 +456,21 @@
 
         /**
          * Calculates the standard deviation of combined average scores across a set of group statistics.
+         * Note: Only groups with size > 0 are included in the calculation to ensure accurate variance based on current distribution.
          * @param {Array<Object>} groupsStats - Array of objects, each containing an 'avgTotalScore'.
          * @returns {number} The standard deviation.
          */
         const calculateStdDev = (groupsStats) => {
-            // Only calculate SD for groups that actually contain students
+            // Only calculate SD for groups that actually contain students (size > 0)
             const nonZeroStats = groupsStats.filter(s => s.size > 0);
             if (nonZeroStats.length <= 1) return 0;
 
             // Use avgTotalScore for standard deviation calculation
             const scores = nonZeroStats.map(s => s.avgTotalScore);
             const mean = scores.reduce((sum, score) => sum + score, 0) / nonZeroStats.length;
-            const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / nonZeroStats.length;
+            
+            // Bessel's correction (N-1) is commonly used for sample SD, but N is fine for population
+            const variance = scores.reduce((sum, score) => sum + Math.pow(score - mean, 2), 0) / nonZeroStats.length; 
             return Math.sqrt(variance);
         };
 
@@ -500,16 +509,16 @@
                 let success = true;
 
                 // --- 1. Handle Must Be Together Constraints ---
+                // Similar logic as before, assigning to smallest valid group
                 for (const constraint of validMustBeTogether) {
                     const [id1, id2] = constraint;
                     const s1 = allStudents.find(s => s.id === id1);
                     const s2 = allStudents.find(s => s.id === id2);
 
-                    if (assignedStudentIds.has(id1) || assignedStudentIds.has(id2)) {
+                    if (assignedStudentIds.has(id1) || assignedStudentIds.has(id2) || !s1 || !s2) {
                         continue;
                     }
 
-                    // Check for conflicts between the two students themselves and with existing partial groups
                     if (hasConflict(s1, [s2], validConflictConstraints)) {
                          window.showMessage("error", `Cannot satisfy 'Must Be Together' constraint: ${s1.name} and ${s2.name} have an automatic (Bully/Victim) or explicit conflict.`);
                          success = false;
@@ -553,16 +562,24 @@
                             if (role === 'Bully' || role === 'Victim') return 2;
                             return 1;
                         };
-                        if (roleOrder(a.role) !== roleOrder(b.role)) return roleOrder(b.role) - roleOrder(a.role);
+                        const roleDiff = roleOrder(b.role) - roleOrder(a.role);
+                        if (roleDiff !== 0) return roleDiff;
 
-                        return (b.behavior + b.academicScore) - (a.behavior + a.academicScore);
+                        // Combined score tie-breaker
+                        const scoreDiff = (b.behavior + b.academicScore) - (a.behavior + a.academicScore);
+                        if (scoreDiff !== 0) return scoreDiff;
+
+                        // Final random tie-breaker
+                        return Math.random() - 0.5;
                     });
 
                     for (const student of unassignedStudents) {
                         let bestGroupIndex = -1;
                         let minOverallStdDev = Infinity;
                         let minGroupSize = Infinity;
-                        let minLeaderCount = Infinity;
+                        
+                        // Find the current smallest group size among all groups
+                        const currentMinSize = Math.min(...groups.map(g => g.length));
 
                         for (let i = 0; i < numGroups; i++) {
                             const currentGroup = groups[i];
@@ -581,27 +598,30 @@
                             // This calculates SD based on the *average* score of the hypothetical groups
                             const currentStdDev = calculateStdDev(hypotheticalGroupStats);
                             const tentativeStats = hypotheticalGroupStats[i];
-
                             const groupSize = tentativeStats.size;
-                            const leaderCount = tentativeStats.leaderCount;
 
-                            const epsilon = 0.0001; // Tolerance for floating-point comparison
-
-                            // Use StdDev as primary metric, then size, then leader count
+                            // 1. Check for strictly better SD (Primary Criterion)
                             if (currentStdDev < minOverallStdDev - epsilon) {
                                 bestGroupIndex = i;
                                 minOverallStdDev = currentStdDev;
                                 minGroupSize = groupSize;
-                                minLeaderCount = leaderCount;
                             }
-                            else if (Math.abs(currentStdDev - minOverallStdDev) < epsilon && groupSize < minGroupSize) {
+                            
+                            // 2. Strong Size Bias Check: If the resulting SD is close, strongly prefer the smallest group.
+                            // This specifically targets the issue where large groups keep the SD artificially low.
+                            else if (groupSize < minGroupSize && currentStdDev < minOverallStdDev + SD_TOLERANCE_FOR_SIZE_BIAS) {
+                                // We found a smaller group that is close enough in SD. Accept it.
                                 bestGroupIndex = i;
+                                minOverallStdDev = currentStdDev; // Accept the slightly higher SD
                                 minGroupSize = groupSize;
-                                minLeaderCount = leaderCount;
                             }
-                            else if (Math.abs(currentStdDev - minOverallStdDev) < epsilon && groupSize === minGroupSize && leaderCount < minLeaderCount) {
+                            
+                            // 3. Strict Tie-breaker (SD is mathematically identical)
+                            else if (Math.abs(currentStdDev - minOverallStdDev) < epsilon && groupSize < minGroupSize) {
+                                // If the SD is a perfect tie, choose the smaller size.
                                 bestGroupIndex = i;
-                                minLeaderCount = leaderCount;
+                                minOverallStdDev = currentStdDev;
+                                minGroupSize = groupSize;
                             }
                         }
 
@@ -639,7 +659,7 @@
 
             groups.forEach((group, index) => {
                 // Now using the average scores for display
-                const { avgBehavior, avgAcademic, leaderCount, totalBehavior, totalAcademic } = calculateGroupScore(group);
+                const { avgBehavior, avgAcademic, leaderCount } = calculateGroupScore(group);
 
                 const groupElement = document.createElement('div');
                 groupElement.className = 'bg-teal-50 p-4 rounded-lg border border-teal-200';
