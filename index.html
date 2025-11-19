@@ -297,19 +297,19 @@
         window.addDefaultStudents = () => {
             // NOTE: Behavior is now 1=Best, 5=Worst
             students = [
-                { id: crypto.randomUUID(), name: 'Alice Johnson', behavior: 1, academics: 'A', role: 'None' }, // Best Behavior
-                { id: crypto.randomUUID(), name: 'Bob Smith', behavior: 3, academics: 'C', role: 'None' },
+                { id: crypto.randomUUID(), name: 'Alice Johnson', behavior: 1, academics: 'A', role: '-' }, // Best Behavior
+                { id: crypto.randomUUID(), name: 'Bob Smith', behavior: 3, academics: 'C', role: '-' },
                 { id: crypto.randomUUID(), name: 'Charlie Brown', behavior: 4, academics: 'D', role: 'Bully' }, // Bad Behavior
                 { id: crypto.randomUUID(), name: 'Dana Scully', behavior: 1, academics: 'A', role: 'Leader' },
-                { id: crypto.randomUUID(), name: 'Eli Vance', behavior: 2, academics: 'B', role: 'None' },
+                { id: crypto.randomUUID(), name: 'Eli Vance', behavior: 2, academics: 'B', role: '-' },
                 { id: crypto.randomUUID(), name: 'Fiona Glenanne', behavior: 5, academics: 'E', role: 'Victim' }, // Worst Behavior, Lowest Academics
-                { id: crypto.randomUUID(), name: 'Gary Oldman', behavior: 3, academics: 'C', role: 'None' },
+                { id: crypto.randomUUID(), name: 'Gary Oldman', behavior: 3, academics: 'C', role: '-' },
                 { id: crypto.randomUUID(), name: 'Hannah Montana', behavior: 1, academics: 'B', role: 'Leader' },
-                { id: crypto.randomUUID(), name: 'Ivan Drago', behavior: 4, academics: 'D', role: 'None' },
-                { id: crypto.randomUUID(), name: 'Jenna Rink', behavior: 2, academics: 'A', role: 'None' },
-                { id: crypto.randomUUID(), name: 'Kyle Reese', behavior: 3, academics: 'C', role: 'None' },
-                { id: crypto.randomUUID(), name: 'Laura Palmer', behavior: 2, academics: 'A', role: 'None' },
-                { id: crypto.randomUUID(), name: 'Mike Ehrmantraut', behavior: 1, academics: 'B', role: 'None' },
+                { id: crypto.randomUUID(), name: 'Ivan Drago', behavior: 4, academics: 'D', role: '-' },
+                { id: crypto.randomUUID(), name: 'Jenna Rink', behavior: 2, academics: 'A', role: '-' },
+                { id: crypto.randomUUID(), name: 'Kyle Reese', behavior: 3, academics: 'C', role: '-' },
+                { id: crypto.randomUUID(), name: 'Laura Palmer', behavior: 2, academics: 'A', role: '-' },
+                { id: crypto.randomUUID(), name: 'Mike Ehrmantraut', behavior: 1, academics: 'B', role: '-' },
                 { id: crypto.randomUUID(), name: 'Nancy Drew', behavior: 5, academics: 'C', role: 'Victim' },
             ];
             
@@ -373,12 +373,12 @@
                         </select>
                     </td>`;
                 
-                // Role (Leader, Bully, Victim, None)
+                // Role (Leader, Bully, Victim, -)
                 row.innerHTML += `
                     <td class="p-3">
                         <select onchange="window.updateStudent('${s.id}', 'role', this.value)" 
                                 class="input-field p-1 text-center bg-white ${s.role === 'Leader' ? 'text-purple-600' : s.role === 'Bully' ? 'text-red-600' : s.role === 'Victim' ? 'text-yellow-600' : 'text-gray-600'}">
-                            ${['None', 'Leader', 'Bully', 'Victim'].map(role => 
+                            ${['-', 'Leader', 'Bully', 'Victim'].map(role => 
                                 `<option value="${role}" ${s.role === role ? 'selected' : ''}>${role}</option>`
                             ).join('')}
                         </select>
@@ -405,7 +405,7 @@
                 name: 'New Student',
                 behavior: 3, // Default to average
                 academics: 'C',
-                role: 'None'
+                role: '-'
             };
             students.push(newStudent);
             window.saveStudents();
@@ -735,7 +735,7 @@
 
                 } else {
                     lastGeneratedGroups = [];
-                    document.getElementById('results-card').style.display = 'none';
+                    document.getElementById('results-card').style.display = '-';
                 }
             }, 50);
         };
@@ -863,7 +863,7 @@
             // Show loading state
             const originalHtml = pdfButton.innerHTML;
             pdfButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating PDF...</span>';
-            if (exportActions) exportActions.style.pointerEvents = 'none';
+            if (exportActions) exportActions.style.pointerEvents = '-';
 
             try {
                 // Ensure jsPDF library is available
