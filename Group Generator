@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balanced Student Group Generator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- ADDED: Nunito Font for an approachable, clean look -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        // CHANGED: Using Nunito for the main font
+                        sans: ['Nunito', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for the new Classic-Approachable Theme */
+        
+        /* CARD: Clean white background with subtle shadow */
+        .card {
+            @apply bg-slate-50 p-6 rounded-xl shadow-lg border border-slate-200;
+        }
+        
+        /* INPUT FIELD: Focus ring matches the new primary color (Teal) */
+        .input-field {
+            @apply w-full p-2 border border-gray-300 rounded-lg focus:ring-teal-500 focus:border-teal-500 transition duration-150;
+        }
+        
+        /* PRIMARY BUTTON STYLING (Teal Accent) */
+        .btn-primary {
+            @apply bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-extrabold text-2xl py-4 px-8 rounded-xl transition duration-200 shadow-xl transform hover:scale-[1.01];
+            /* Custom Teal shadow for extra pop */
+            box-shadow: 0 8px 20px -6px rgba(13, 148, 136, 0.7); /* Teal-600 glow */
+        }
+        
+        .btn-secondary {
+            @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150;
+        }
+        .btn-export {
+            @apply bg-gray-600 hover:bg-gray-700 text-white font-medium py-2 px-4 rounded-lg transition duration-150;
+        }
+        /* PDF Button kept as Indigo for professional export function */
+        .btn-pdf { 
+            @apply bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition duration-150;
+        }
+        /* Save Button kept Green for success/save look */
+        .btn-save {
+            @apply bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-150;
+        }
+        /* Loading Spinner CSS */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 1.5rem;
+            height: 1.5rem;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .dropdown {
+            @apply p-2 border border-gray-300 rounded-lg appearance-none bg-white pr-8;
+        }
+    </style>
+</head>
+<!-- CHANGED: Body background to pure white for a clean, academic look -->
+<body class="bg-white min-h-screen p-4 sm:p-8 font-sans">
+
+    <!-- Load PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <!-- FIREBASE AND JAVASCRIPT LOGIC BELOW -->
+    <script type="module">
+        // Firebase Imports
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global Firebase Variables
+        let db;
+        let auth;
+        let userId = 'anonymous'; // Default until authenticated
+        const PROJECT_DOCUMENT_ID = 'student_group_settings';
+        
+        // Canvas Global Variables (MANDATORY USE)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        /**
+         * Initializes Firebase and authenticates the user.
+         */
+        const initializeFirebase = async () => {
+            if (!firebaseConfig.apiKey) {
+                console.warn("Firebase config is missing. Data persistence is disabled.");
+                return;
+            }
+            try {
+                // setLogLevel('Debug'); // Enable debug logging for Firestore
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                
+                userId = auth.currentUser?.uid || crypto.randomUUID();
+                console.log(`Firebase Initialized. User ID: ${userId}`);
+
+                // Load existing data immediately after auth
+                await loadProject();
+
+            } catch (error) {
+                console.error("Firebase initialization or sign-in failed:", error);
+                showMessage("error", "Failed to connect to the database. Saving and loading disabled.");
+            }
+        };
+
+
+        // Global state
+        let students = [];
+        let mustBeTogether = []; // Array of arrays: [[id1, id2], [id3, id4]]
+        let conflictConstraints = []; // Array of arrays: [[id1, id2], [id3, id4]]
+        let lastGeneratedGroups = []; // Store the last successful generation for export
+
+        const ACADEMIC_SCORES = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1 };
+        const BEHAVIOR_OPTIONS = [5, 4, 3, 2, 1];
+        const ACADEMIC_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
+        const ROLE_OPTIONS = ['Other', 'Leader', 'Bully', 'Victim'];
+
+
+        const generateId = () => Math.random().toString(36).substring(2, 9);
+        
+        const renderBehaviorDropdown = (studentId, currentVal) => {
+            let options = BEHAVIOR_OPTIONS.map(val => 
+                `<option value="${val}" ${currentVal == val ? 'selected' : ''}>${val}</option>`
+            ).join('');
+            return `<select onchange="updateStudent('${studentId}', 'behavior', this.value)" class="dropdown">${options}</select>`;
+        };
+
+        const renderAcademicDropdown = (studentId, currentVal) => {
+            let options = ACADEMIC_OPTIONS.map(val => 
+                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
+            ).join('');
+            return `<select onchange="updateStudent('${studentId}', 'academics', this.value)" class="dropdown">${options}</select>`;
+        };
+        
+        const renderRoleDropdown = (studentId, currentVal) => {
+            let options = ROLE_OPTIONS.map(val => 
+                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
+            ).join('');
+            return `<select onchange="updateStudent('${studentId}', 'role', this.value)" class="dropdown">${options}</select>`;
+        };
+
+        const renderStudentList = () => {
+            const listContainer = document.getElementById('student-list');
+            listContainer.innerHTML = '';
+            
+            if (students.length === 0) {
+                document.getElementById('empty-roster-message').classList.remove('hidden');
+            } else {
+                document.getElementById('empty-roster-message').classList.add('hidden');
+            }
+
+            students.forEach(student => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-slate-100'; // CHANGED: Hover background color
+                row.innerHTML = `
+                    <td class="p-3 whitespace-nowrap">
+                        <input type="text" value="${student.name}" onchange="window.updateStudent('${student.id}', 'name', this.value)" class="input-field max-w-40 text-sm font-medium text-gray-900"/>
+                    </td>
+                    <td class="p-3 whitespace-nowrap">
+                        ${renderBehaviorDropdown(student.id, student.behavior)}
+                    </td>
+                    <td class="p-3 whitespace-nowrap">
+                        ${renderAcademicDropdown(student.id, student.academics)}
+                    </td>
+                    <td class="p-3 whitespace-nowrap">
+                        ${renderRoleDropdown(student.id, student.role)}
+                    </td>
+                    <td class="p-3 whitespace-nowrap text-sm font-medium">
+                        <button onclick="window.removeStudent('${student.id}')" class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </td>
+                `;
+                listContainer.appendChild(row);
+            });
+            renderConstraintSelectors();
+        };
+
+        const renderStudentSelector = (currentStudentId) => {
+            const studentOptions = students.map(s => 
+                `<option value="${s.id}" ${s.id === currentStudentId ? 'selected' : ''}>${s.name}</option>`
+            ).join('');
+            return `
+                <select class="dropdown w-full" data-student-id="${currentStudentId || ''}">
+                    <option value="">-- Select Student --</option>
+                    ${studentOptions}
+                </select>
+            `;
+        };
+
+        const renderConstraintSelectors = () => {
+            const togetherList = document.getElementById('must-be-together-list');
+            const conflictList = document.getElementById('conflict-constraints-list');
+            
+            togetherList.innerHTML = mustBeTogether.map((constraint, index) => 
+                renderConstraintRow(constraint, index, 'together')
+            ).join('');
+
+            conflictList.innerHTML = conflictConstraints.map((constraint, index) => 
+                renderConstraintRow(constraint, index, 'conflict')
+            ).join('');
+        };
+
+        const renderConstraintRow = (constraint, index, type) => {
+            const baseId = `${type}-${index}`;
+            const relationText = type === 'together' ? 'and' : 'must not be with'; 
+            
+            return `
+                <div class="flex items-center space-x-2 p-3 bg-white rounded-lg border" id="${baseId}">
+                    <div class="flex-grow space-y-1">
+                        ${renderStudentSelector(constraint[0], baseId + '-0')}
+                        <span class="text-xs text-gray-500 block text-center">${relationText}</span>
+                        ${renderStudentSelector(constraint[1], baseId + '-1')}
+                    </div>
+                    <button onclick="window.removeConstraint(${index}, '${type}')" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove constraint">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            `;
+        };
+
+
+        window.addStudentRow = () => {
+            const newStudent = {
+                id: generateId(),
+                name: `Student ${students.length + 1}`,
+                behavior: 3,
+                academics: 'C',
+                role: 'Other'
+            };
+            students.push(newStudent);
+            renderStudentList();
+        };
+
+        window.updateStudent = (id, key, value) => {
+            const student = students.find(s => s.id === id);
+            if (student) {
+                student[key] = key === 'behavior' ? parseInt(value) : value;
+                if (key === 'name') {
+                    renderStudentList();
+                }
+            }
+        };
+
+        window.removeStudent = (id) => {
+            students = students.filter(s => s.id !== id);
+            
+            mustBeTogether = mustBeTogether.filter(c => !c.includes(id));
+            conflictConstraints = conflictConstraints.filter(c => !c.includes(id));
+
+            renderStudentList();
+        };
+        
+        window.addConstraint = (type) => {
+            const constraintList = type === 'together' ? mustBeTogether : conflictConstraints;
+            constraintList.push(["", ""]); 
+            renderConstraintSelectors();
+
+            const listElement = document.getElementById(type === 'together' ? 'must-be-together-list' : 'conflict-constraints-list');
+            const newConstraintDiv = listElement.lastElementChild;
+            if (newConstraintDiv) {
+                newConstraintDiv.querySelectorAll('select').forEach((select, index) => {
+                    select.addEventListener('change', (e) => {
+                        const constraintIndex = Array.from(listElement.children).indexOf(newConstraintDiv);
+                        const listToUpdate = type === 'together' ? mustBeTogether : conflictConstraints;
+                        listToUpdate[constraintIndex][index] = e.target.value;
+                    });
+                });
+            }
+        };
+
+        window.removeConstraint = (index, type) => {
+            if (type === 'together') {
+                mustBeTogether.splice(index, 1);
+            } else {
+                conflictConstraints.splice(index, 1);
+            }
+            renderConstraintSelectors();
+        };
+
+        const getAcademicScore = (grade) => ACADEMIC_SCORES[grade] || 0;
+
+        const hasConflict = (student, group, allConstraints) => {
+            const studentId = student.id;
+            const studentConflicts = allConstraints.filter(c => c.includes(studentId));
+
+            for (const conflictPair of studentConflicts) {
+                const otherId = conflictPair.find(id => id !== studentId);
+                if (group.some(s => s.id === otherId)) {
+                    return true;
+                }
+            }
+
+            const newStudentRole = student.role;
+            const isNewStudentBully = newStudentRole === 'Bully';
+            const isNewStudentVictim = newStudentRole === 'Victim';
+
+            for (const groupMember of group) {
+                const groupMemberRole = groupMember.role;
+
+                if ((isNewStudentBully && groupMemberRole === 'Victim') ||
+                    (isNewStudentVictim && groupMemberRole === 'Bully')) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        
+        const calculateGroupScore = (group) => {
+            let totalBehavior = 0;
+            let totalAcademic = 0;
+            let leaderCount = 0;
+
+            for (const student of group) {
+                // Ensure scores are numbers before summing
+                totalBehavior += Number(student.behavior);
+                totalAcademic += Number(student.academicScore);
+                if (student.role === 'Leader') {
+                    leaderCount++;
+                }
+            }
+            return { totalBehavior, totalAcademic, leaderCount, totalScore: totalBehavior + totalAcademic, size: group.length };
+        };
+
+        window.generateGroups = () => {
+            const numGroups = parseInt(document.getElementById('num-groups').value);
+            const messageBox = document.getElementById('message-box');
+            messageBox.style.display = 'none';
+
+            if (students.length === 0) {
+                showMessage("error", "Please add at least one student to the roster.");
+                return;
+            }
+            if (numGroups <= 0 || numGroups > students.length) {
+                showMessage("error", "Number of groups must be between 1 and the total number of students.");
+                return;
+            }
+            
+            const generateButton = document.getElementById('generate-button');
+            const originalHtml = generateButton.innerHTML;
+            generateButton.disabled = true;
+            generateButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating...</span>';
+            
+            // Wait a moment to show loading state before running heavy logic
+            setTimeout(() => {
+                const allStudents = students.map(s => ({
+                    ...s,
+                    behavior: parseInt(s.behavior),
+                    academicScore: getAcademicScore(s.academics)
+                }));
+                
+                const validMustBeTogether = mustBeTogether.filter(c => allStudents.some(s => s.id === c[0]) && allStudents.some(s => s.id === c[1]));
+                const validConflictConstraints = conflictConstraints.filter(c => allStudents.some(s => s.id === c[0]) && allStudents.some(s => s.id === c[1]));
+
+                let groups = Array.from({ length: numGroups }, () => []);
+                let assignedStudentIds = new Set();
+                let success = true;
+
+                // Phase 1: Hard Constraints (Must Be Together)
+                for (const constraint of validMustBeTogether) {
+                    const [id1, id2] = constraint;
+                    const s1 = allStudents.find(s => s.id === id1);
+                    const s2 = allStudents.find(s => s.id === id2);
+
+                    if (assignedStudentIds.has(id1) || assignedStudentIds.has(id2)) {
+                        continue; 
+                    }
+
+                    if (hasConflict(s1, [s2], validConflictConstraints)) {
+                        showMessage("error", `Cannot satisfy 'Must Be Together' constraint: ${s1.name} and ${s2.name} have an inherent or explicit conflict (e.g., Bully/Victim).`);
+                        success = false;
+                        break;
+                    }
+
+                    let bestGroupIndex = -1;
+                    let minSize = Infinity;
+
+                    for (let i = 0; i < numGroups; i++) {
+                        if (groups[i].length < minSize) {
+                            if (!hasConflict(s1, groups[i], validConflictConstraints) && !hasConflict(s2, groups[i], validConflictConstraints)) {
+                                 minSize = groups[i].length;
+                                 bestGroupIndex = i;
+                            }
+                        }
+                    }
+
+                    if (bestGroupIndex !== -1) {
+                        groups[bestGroupIndex].push(s1, s2);
+                        assignedStudentIds.add(id1);
+                        assignedStudentIds.add(id2);
+                    } else {
+                        showMessage("error", `Cannot satisfy a 'Must Be Together' constraint (${s1.name} and ${s2.name}) because it creates an unavoidable conflict with an existing group member.`);
+                        success = false;
+                        break;
+                    }
+                }
+                
+                // Phase 2: Greedy Assignment of Remaining Students
+                if (success) {
+                    let unassignedStudents = allStudents.filter(s => !assignedStudentIds.has(s.id));
+                    
+                    unassignedStudents.sort((a, b) => {
+                        const roleOrder = (role) => {
+                            if (role === 'Leader') return 3;
+                            if (role === 'Bully' || role === 'Victim') return 2;
+                            return 1;
+                        };
+                        if (roleOrder(a.role) !== roleOrder(b.role)) return roleOrder(b.role) - roleOrder(a.role);
+                        
+                        return (b.behavior + b.academicScore) - (a.behavior + a.academicScore);
+                    });
+
+                    for (const student of unassignedStudents) {
+                        let bestGroupIndex = -1;
+                        let minGroupSize = Infinity;
+                        let minScoreVariance = Infinity;
+                        
+                        const totalScoreAll = allStudents.reduce((sum, s) => sum + s.behavior + s.academicScore, 0);
+                        const targetAvgScore = totalScoreAll / numGroups;
+                        
+                        for (let i = 0; i < numGroups; i++) {
+                            const currentGroup = groups[i];
+                            
+                            if (hasConflict(student, currentGroup, validConflictConstraints)) {
+                                continue;
+                            }
+
+                            const tentativeGroup = [...currentGroup, student];
+                            const tentativeScore = calculateGroupScore(tentativeGroup);
+                            
+                            const groupSize = tentativeGroup.length;
+                            const scoreDifference = Math.abs(tentativeScore.totalScore - (targetAvgScore * groupSize)); 
+                            
+                            if (groupSize < minGroupSize) {
+                                bestGroupIndex = i;
+                                minGroupSize = groupSize;
+                                minScoreVariance = scoreDifference;
+                            } 
+                            else if (groupSize === minGroupSize && scoreDifference < minScoreVariance) {
+                                bestGroupIndex = i;
+                                minScoreVariance = scoreDifference;
+                            } 
+                            else if (groupSize === minGroupSize && scoreDifference === minScoreVariance && student.role === 'Leader') {
+                                const currentGroupScore = calculateGroupScore(groups[bestGroupIndex]);
+                                const targetGroupScore = calculateGroupScore(currentGroup);
+                                if (targetGroupScore.leaderCount < currentGroupScore.leaderCount) {
+                                    bestGroupIndex = i;
+                                }
+                            }
+                        }
+
+                        if (bestGroupIndex !== -1) {
+                            groups[bestGroupIndex].push(student);
+                            assignedStudentIds.add(student.id);
+                        } else {
+                            showMessage("error", `Could not place student ${student.name} into any group without violating a conflict constraint (explicit or Bully/Victim). Grouping stopped.`);
+                            success = false;
+                            break;
+                        }
+                    }
+                }
+
+                generateButton.disabled = false;
+                generateButton.innerHTML = originalHtml;
+
+                if (success) {
+                    lastGeneratedGroups = groups;
+                    renderGroupResults(groups);
+                    showMessage("success", `Successfully generated ${numGroups} balanced groups.`);
+                } else {
+                    lastGeneratedGroups = [];
+                    document.getElementById('results-card').style.display = 'none';
+                }
+            }, 50); // Small delay for visual loading feedback
+        };
+
+
+        const renderGroupResults = (groups) => {
+            const resultsContainer = document.getElementById('group-results');
+            resultsContainer.innerHTML = '';
+            document.getElementById('results-card').style.display = 'block';
+
+            groups.forEach((group, index) => {
+                const { totalBehavior, totalAcademic, leaderCount } = calculateGroupScore(group);
+                
+                const groupElement = document.createElement('div');
+                // CHANGED: Group results card to use the Teal palette for consistency
+                groupElement.className = 'bg-teal-50 p-4 rounded-lg border border-teal-200'; 
+                groupElement.innerHTML = `
+                    <h3 class="text-lg font-semibold text-teal-800 mb-2">Group ${index + 1} <span class="text-sm font-normal text-teal-600">(${group.length} students)</span></h3>
+                    
+                    <div class="flex flex-wrap gap-4 text-sm mb-3">
+                        <div class="flex items-center text-gray-700">
+                            <svg class="w-4 h-4 mr-1 text-green-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 10a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM13 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2h-2zm0 10a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2zM4 11a1 1 0 100 2h1a1 1 0 100-2H4zm8-7a1 1 0 100 2h1a1 1 0 100-2h-1zM4 5a1 1 0 100 2h1a1 1 0 100-2H4zm8 8a1 1 0 100 2h1a1 1 0 100-2h-1z"></path></svg>
+                            Total Behavior Score: <span class="font-medium ml-1">${totalBehavior}</span>
+                        </div>
+                        <div class="flex items-center text-gray-700">
+                            <svg class="w-4 h-4 mr-1 text-yellow-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1.5a1 1 0 01-2 0V3a1 1 0 011-1zm6.364 2.636a1 1 0 01-.707 1.707L14.95 6.05a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 10a1 1 0 01-1 1h-1.5a1 1 0 010-2H16a1 1 0 011 1zm-2.636 5.364a1 1 0 01-1.414.071l-.707-.707a1 1 0 01.071-1.414l.707.707a1 1 0 011.414 1.414zM10 16a1 1 0 01-1 1H7a1 1 0 01-1-1v-1.5a1 1 0 012 0V16a1 1 0 011 1zM3.636 4.636a1 1 0 011.707-.707L6.05 4.95a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 010-1.414zM3 10a1 1 0 011-1h1.5a1 1 0 010 2H4a1 1 0 01-1-1zm2.636 5.364a1 1 0 01-1.414 0l-.707-.707a1 1 0 011.414-1.414l.707.707a1 1 0 010 1.414z" clip-rule="evenodd"></path></svg>
+                            Total Academic Score: <span class="font-medium ml-1">${totalAcademic}</span>
+                        </div>
+                         <div class="flex items-center text-gray-700">
+                            <svg class="w-4 h-4 mr-1 text-purple-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>
+                            Leaders: <span class="font-medium ml-1">${leaderCount}</span>
+                        </div>
+                    </div>
+
+                    <ul class="list-disc pl-5 space-y-1 text-gray-800">
+                        ${group.map(s => {
+                            let roleText = '';
+                            if (['Leader', 'Bully', 'Victim'].includes(s.role)) {
+                                roleText = `<span class="text-xs ml-1 text-gray-600">(${s.role})</span>`;
+                            }
+                            
+                            return `
+                                <li class="text-sm">
+                                    ${s.name} <span class="font-semibold text-teal-700">${s.behavior}${s.academics}</span>${roleText}
+                                </li>
+                            `;
+                        }).join('')}
+                    </ul>
+                `;
+                resultsContainer.appendChild(groupElement);
+            });
+        };
+
+        const showMessage = (type, message) => {
+            const box = document.getElementById('message-box');
+            box.textContent = message;
+            box.classList.remove('hidden', 'bg-red-100', 'border-red-500', 'text-red-800', 'bg-green-100', 'border-green-500', 'text-green-800', 'bg-yellow-100', 'border-yellow-500', 'text-yellow-800');
+
+            if (type === 'error') {
+                box.classList.add('bg-red-100', 'border-red-500', 'text-red-800', 'border');
+            } else if (type === 'success') {
+                box.classList.add('bg-green-100', 'border-green-500', 'text-green-800', 'border');
+            } else if (type === 'warning') {
+                box.classList.add('bg-yellow-100', 'border-yellow-500', 'text-yellow-800', 'border');
+            }
+            box.style.display = 'block';
+        };
+
+        window.exportToCSV = () => {
+            if (lastGeneratedGroups.length === 0) {
+                showMessage('warning', 'Please generate groups first before attempting to export.');
+                return;
+            }
+
+            let csvContent = "Group,Name,Behavior Score,Academic Grade,Role\n";
+
+            lastGeneratedGroups.forEach((group, groupIndex) => {
+                const groupNumber = `Group ${groupIndex + 1}`;
+                group.forEach(student => {
+                    const name = student.name.replace(/"/g, '""');
+                    csvContent += `"${groupNumber}","${name}",${student.behavior},${student.academics},"${student.role}"\n`;
+                });
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'student_groups.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showMessage('success', 'Groups successfully exported to CSV.');
+        };
+        
+        window.exportToPDF = async () => {
+            if (lastGeneratedGroups.length === 0) {
+                showMessage('warning', 'Please generate groups first before attempting to export.');
+                return;
+            }
+
+            const resultsCard = document.getElementById('results-card');
+            const exportActions = resultsCard.querySelector('.export-actions');
+            const pdfButtonContent = document.getElementById('pdf-export-content');
+            
+            pdfButtonContent.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating PDF...</span>';
+            exportActions.style.display = 'none';
+
+            try {
+                const JsPDF = window.jspdf.jsPDF; 
+
+                const canvas = await html2canvas(resultsCard, {
+                    scale: 2, 
+                    logging: false,
+                    allowTaint: true,
+                    useCORS: true,
+                    backgroundColor: '#ffffff' 
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 200; 
+                const pageHeight = 295; 
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                const pdf = new JsPDF('p', 'mm', 'a4');
+
+                pdf.addImage(imgData, 'PNG', 5, position + 5, imgWidth - 10, imgHeight);
+                heightLeft -= pageHeight;
+
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 5, position + 5, imgWidth - 10, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+
+                pdf.save('student_groups.pdf');
+
+                showMessage('success', 'Groups successfully exported to PDF.');
+
+            } catch (error) {
+                console.error("PDF generation failed:", error);
+                showMessage('error', 'Failed to generate PDF. See console for details.');
+            } finally {
+                pdfButtonContent.innerHTML = `
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.002 12.002 0 0012 22a12.002 12.002 0 008.618-18.966z"></path></svg>
+                    Export to PDF
+                `;
+                exportActions.style.display = 'flex';
+            }
+        };
+
+
+        /**
+         * Applies loaded data to the application state and UI.
+         */
+        const applyLoadedData = (data, successMessage) => {
+            // 1. Restore State Variables
+            students = data.students || [];
+            mustBeTogether = data.mustBeTogether || [];
+            conflictConstraints = data.conflictConstraints || [];
+            lastGeneratedGroups = data.lastGeneratedGroups || [];
+            
+            // 2. Restore UI elements
+            document.getElementById('num-groups').value = data.numGroups || 3;
+
+            // 3. Re-render UI components based on loaded state
+            renderStudentList();
+            renderConstraintSelectors();
+            
+            if (lastGeneratedGroups.length > 0) {
+                renderGroupResults(lastGeneratedGroups);
+            } else {
+                document.getElementById('results-card').style.display = 'none';
+            }
+
+            showMessage("success", successMessage);
+        };
+
+        /**
+         * Saves the current app state (students, groups, constraints) to private Firestore document.
+         */
+        window.saveProject = async () => {
+            if (!db || !userId) {
+                showMessage("error", "Database connection not ready. Cannot save project.");
+                return;
+            }
+
+            const saveButton = document.getElementById('save-button');
+            const originalHtml = saveButton.innerHTML;
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Saving...</span>';
+
+            const projectData = {
+                numGroups: document.getElementById('num-groups').value,
+                students: students,
+                mustBeTogether: mustBeTogether,
+                conflictConstraints: conflictConstraints,
+                lastGeneratedGroups: lastGeneratedGroups // Save the last result too
+            };
+
+            // Private Firestore path: /artifacts/{appId}/users/{userId}/data/{docId}
+            const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', PROJECT_DOCUMENT_ID);
+
+            try {
+                await setDoc(docRef, projectData, { merge: false });
+                showMessage("success", "Project saved successfully!");
+            } catch (error) {
+                console.error("Error saving project:", error);
+                showMessage("error", "Failed to save project. Check console for details.");
+            } finally {
+                saveButton.disabled = false;
+                saveButton.innerHTML = originalHtml;
+            }
+        };
+
+        /**
+         * Loads the project state from private Firestore document.
+         */
+        window.loadProject = async () => {
+            if (!db || !userId) {
+                // If called during initialization, just exit gracefully.
+                return;
+            }
+
+            const loadButton = document.getElementById('load-button');
+            const originalHtml = loadButton.innerHTML;
+            loadButton.disabled = true;
+            loadButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Loading...</span>';
+
+            // Private Firestore path: /artifacts/{appId}/users/{userId}/data/{docId}
+            const docRef = doc(db, 'artifacts', appId, 'users', userId, 'data', PROJECT_DOCUMENT_ID);
+
+            try {
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    await applyLoadedData(docSnap.data(), "Private project loaded successfully!");
+                } else {
+                    showMessage("warning", "No saved private project found. Starting with default data.");
+                    // If no data, initialize with dummy data
+                    initializeData(true); 
+                }
+            } catch (error) {
+                console.error("Error loading private project:", error);
+                showMessage("error", "Failed to load private project. Check console for details.");
+            } finally {
+                loadButton.disabled = false;
+                loadButton.innerHTML = originalHtml;
+            }
+        };
+
+        /**
+         * Initializes the student data with defaults if no saved data is found.
+         */
+        const initializeData = (useDefaultData = false) => {
+            // Only use dummy data if specifically requested (i.e., when no data is found in Firestore)
+            if (!useDefaultData && students.length > 0) {
+                // If students array is already populated (likely from a previous load attempt), skip dummy data
+                return;
+            }
+
+            // Dummy data for the student grouping app
+            students = [
+                { id: generateId(), name: 'Alice', behavior: 5, academics: 'A', role: 'Leader' },
+                { id: generateId(), name: 'Bob', behavior: 1, academics: 'E', role: 'Victim' },
+                { id: generateId(), name: 'Charlie', behavior: 3, academics: 'C', role: 'Bully' },
+                { id: generateId(), name: 'David', behavior: 4, academics: 'B', role: 'Other' },
+                { id: generateId(), name: 'Eve', behavior: 2, academics: 'D', role: 'Other' },
+                { id: generateId(), name: 'Frank', behavior: 5, academics: 'A', role: 'Leader' },
+                { id: generateId(), name: 'Grace', behavior: 1, academics: 'E', role: 'Other' },
+                { id: generateId(), name: 'Henry', behavior: 3, academics: 'C', role: 'Bully' },
+                { id: generateId(), name: 'Ivy', behavior: 2, academics: 'D', role: 'Victim' },
+            ].map(s => ({ ...s, academicScore: getAcademicScore(s.academics) }));
+
+            renderStudentList();
+            document.getElementById('results-card').style.display = 'none';
+        };
+
+        // Start by initializing Firebase, which will then attempt to load private data.
+        window.onload = initializeFirebase;
+        
+    </script>
+    <!-- End of Module Script -->
+    
+</head>
+<body class="bg-white min-h-screen p-4 sm:p-8 font-sans">
+
+    <div id="app" class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-extrabold text-gray-900 mb-8">Class Grouping Tool</h1>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Student Roster and Constraints Column (2/3 width on large screens) -->
+            <div class="lg:col-span-2 space-y-8">
+                
+                <!-- Student Roster -->
+                <div class="card">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">Student Roster</h2>
+                        <button class="btn-secondary text-sm">Import from CSV (Mock)</button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr class="text-xs font-medium text-gray-500 uppercase tracking-wider bg-slate-100"> <!-- CHANGED: Table header background -->
+                                    <th class="px-3 py-3 text-left">Name</th>
+                                    <th class="px-3 py-3 text-left">Behavior (1-5)</th>
+                                    <th class="px-3 py-3 text-left">Academics (A-E)</th>
+                                    <th class="px-3 py-3 text-left">Role</th>
+                                    <th class="px-3 py-3 text-left">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="student-list" class="bg-white divide-y divide-gray-200">
+                                <!-- Student rows will be injected here -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="empty-roster-message" class="text-center py-4 text-gray-500 italic hidden">
+                        No students added yet. Click "Add Student" to get started.
+                    </div>
+                    
+                    <button onclick="addStudentRow()" class="mt-4 w-full border border-dashed border-gray-300 hover:border-teal-500 text-gray-600 hover:text-teal-600 py-3 rounded-lg transition duration-150 flex items-center justify-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                        Add Student
+                    </button>
+                </div>
+                
+                <!-- Constraints Section -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Must Be Together -->
+                    <div class="card">
+                        <h2 class="text-xl font-bold text-gray-800 mb-3">Must Be Together</h2>
+                        <p class="text-sm text-gray-500 mb-4">Select students who must be in the same group.</p>
+                        <div id="must-be-together-list" class="space-y-3">
+                            <!-- Constraints go here -->
+                        </div>
+                        <button onclick="addConstraint('together')" class="mt-4 w-full border border-dashed border-gray-300 hover:border-green-500 text-gray-600 hover:text-green-600 py-2 rounded-lg transition duration-150 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                            Add Constraint
+                        </button>
+                    </div>
+
+                    <!-- Must Be Separated -->
+                    <div class="card">
+                        <h2 class="text-xl font-bold text-gray-800 mb-3">Must Be Separated</h2>
+                        <p class="text-sm text-gray-500 mb-4">Select students who must not be in the same group.</p>
+                        <div id="conflict-constraints-list" class="space-y-3">
+                            <!-- Conflicts go here -->
+                        </div>
+                        <button onclick="addConstraint('conflict')" class="mt-4 w-full border border-dashed border-gray-300 hover:border-red-500 text-gray-600 hover:text-red-600 py-2 rounded-lg transition duration-150 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/24/24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                            Add Constraint
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Configuration and Results Column (1/3 width on large screens) -->
+            <div class="space-y-8">
+                
+                <!-- Group Configuration & Persistence -->
+                <div class="card">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">Group Configuration</h2>
+                    <label for="num-groups" class="block text-sm font-medium text-gray-700 mb-2">Number of Groups</label>
+                    <input type="number" id="num-groups" value="3" min="1" class="input-field mb-6">
+                    
+                    <button id="generate-button" onclick="generateGroups()" class="btn-primary w-full flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2l4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.002 12.002 0 0012 22a12.002 12.002 0 008.618-18.966z"></path></svg>
+                        Generate Groups
+                    </button>
+
+                    <!-- Persistence Buttons -->
+                    <div class="flex gap-3 mt-4">
+                        <button id="save-button" onclick="saveProject()" class="btn-save flex-1 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-3 0V4a1 1 0 00-1-1H9a1 1 0 00-1 1v3m3 0h.01M12 21h2m-2 0h-2"></path></svg>
+                            Save Private
+                        </button>
+                        <button id="load-button" onclick="loadProject()" class="btn-export flex-1 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 19M17 10V5m-4 5l4 4m0 0l4-4"></path></svg>
+                            Load Private
+                        </button>
+                    </div>
+
+                    <div id="message-box" class="mt-4 p-3 rounded-lg hidden text-sm font-medium"></div>
+                </div>
+
+                <!-- Group Results -->
+                <div class="card" id="results-card" style="display: none;">
+                    <h2 class="text-xl font-bold text-gray-800 mb-4">Generated Groups</h2>
+                    
+                    <!-- Export Buttons -->
+                    <div class="export-actions flex gap-3 mb-4">
+                        <button onclick="exportToCSV()" class="btn-export flex-1 flex items-center justify-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.885 2.5l-.837.837m0 0L3 18.5m10.5-5.5a4 4 0 11-8 0 4 4 0 018 0zM12 18V6m0 0l-3 3m3-3l3 3"></path></svg>
+                            Export to CSV
+                        </button>
+                        <button id="export-pdf-button" onclick="exportToPDF()" class="btn-pdf flex-1 flex items-center justify-center">
+                            <div id="pdf-export-content" class="flex items-center">
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.002 12.002 0 0012 22a12.002 12.002 0 008.618-18.966z"></path></svg>
+                                Export to PDF
+                            </div>
+                        </button>
+                    </div>
+
+                    <div id="group-results" class="space-y-4">
+                        <!-- Group cards will be injected here -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</body>
+</html>
