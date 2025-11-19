@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Balanced Student Group Generator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.3/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLMDJc5fS5Wp6FzHnCgVf7o/Q6nK14QW6J5fS5Wp6FzHnCgVf7o/Q6nK14QW6J5Nf27Wl42gO3K6bB1l5z5Fp/4wB6m6a4A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    
+
     <script>
         tailwind.config = {
             theme: {
@@ -28,7 +28,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
             border: 1px solid #e2e8f0;
         }
-        
+
         .input-field {
             width: 100%;
             padding: 0.5rem;
@@ -36,7 +36,7 @@
             border-radius: 0.5rem;
             transition: all 0.15s ease-in-out;
         }
-        
+
         .btn-primary {
             background-color: #10b981;
             color: white;
@@ -52,7 +52,7 @@
             background-color: #059669;
             transform: scale(1.01);
         }
-        
+
         .btn-secondary {
             background-color: #e5e7eb;
             color: #1f2937;
@@ -77,7 +77,7 @@
             background-color: #374151;
         }
 
-        .btn-pdf { 
+        .btn-pdf {
             background-color: #4f46e5;
             color: white;
             font-weight: 500;
@@ -109,13 +109,9 @@
             background-color: white;
             padding-right: 2rem;
         }
-        /* Style for the Firebase message */
+        /* Style for the Firebase message (Now unused, but keeping the ID just in case) */
         #firebase-status {
-            font-size: 0.8rem;
-            font-weight: 600;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            border-width: 1px;
+            display: none; /* Hide the status element */
         }
     </style>
 </head>
@@ -124,370 +120,36 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-    <script type="module">
-        // --- Firebase Imports ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global Firebase variables
-        let app;
-        let auth;
-        let db;
-        let userId = null;
-        let isAuthReady = false;
-
-        // Configuration variables provided by the environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-        // Application State
-        const MAX_ROSTERS = 12; 
-        let rosterList = []; 
-        let currentRosterId = null;
-        let currentRosterName = "Loading...";
-
+    <script>
+        // --- Application State (Fully Local) ---
         let students = [];
-        let mustBeTogether = []; 
-        let conflictConstraints = []; 
-        let lastGeneratedGroups = []; 
+        let mustBeTogether = [];
+        let conflictConstraints = [];
+        let lastGeneratedGroups = [];
+        const currentRosterName = "Local Roster"; // Used for export naming
 
         const ACADEMIC_SCORES = { 'A': 5, 'B': 4, 'C': 3, 'D': 2, 'E': 1 };
-        const BEHAVIOR_OPTIONS = [1, 2, 3, 4, 5]; 
+        const BEHAVIOR_OPTIONS = [1, 2, 3, 4, 5];
         const ACADEMIC_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
         const ROLE_OPTIONS = ['Other', 'Leader', 'Bully', 'Victim'];
 
         const generateId = () => Math.random().toString(36).substring(2, 9);
-        
-        // --- FIREBASE INITIALIZATION & DATA HANDLING ---
 
-        const FIREBASE_COLLECTION = 'rosters';
+        // --- UI RENDERING AND LOGIC ---
 
-        const updateFirebaseStatus = (message, color) => {
-            const statusEl = document.getElementById('firebase-status');
-            statusEl.textContent = message;
-            const colorMap = {
-                'green': 'text-green-800 bg-green-100 border-green-500',
-                'red': 'text-red-800 bg-red-100 border-red-500',
-                'blue': 'text-blue-800 bg-blue-100 border-blue-500',
-                'yellow': 'text-yellow-800 bg-yellow-100 border-yellow-500',
-                'gray': 'text-gray-800 bg-gray-100 border-gray-500'
-            };
-            statusEl.className = `font-medium mt-1 p-1 rounded-md text-xs border ${colorMap[color] || colorMap['gray']}`;
-        };
-
-        const getRosterCollectionRef = () => {
-            if (!db || !userId) return null;
-            // Private data path: /artifacts/{appId}/users/{userId}/rosters
-            const path = `artifacts/${appId}/users/${userId}/${FIREBASE_COLLECTION}`;
-            return collection(db, path);
-        };
-
-        const getRosterDocRef = (rosterId) => {
-            const rosterRef = getRosterCollectionRef();
-            if (!rosterRef) return null;
-            return doc(rosterRef, rosterId);
-        };
-
-        window.saveData = async () => {
-            if (!isAuthReady || !currentRosterId) {
-                console.log("Firebase not ready or no roster selected, skipping save.");
-                if (currentRosterId && !isAuthReady) {
-                    updateFirebaseStatus('Waiting for authentication to complete...', 'yellow');
-                }
-                return;
-            }
-
-            const dataToSave = {
-                name: currentRosterName,
-                students: students,
-                mustBeTogether: mustBeTogether,
-                conflictConstraints: conflictConstraints,
-                timestamp: new Date().toISOString()
-            };
-
-            try {
-                const docRef = getRosterDocRef(currentRosterId);
-                if (docRef) {
-                    await setDoc(docRef, dataToSave, { merge: true });
-                    updateFirebaseStatus(`Roster "${currentRosterName}" saved!`, 'green');
-                }
-            } catch (e) {
-                // IMPROVED ERROR REPORTING HERE
-                console.error("Error saving document: ", e);
-                updateFirebaseStatus(`Error saving: ${e.message}`, 'red');
-            }
-        };
-        
-        // Debounce utility to prevent too many Firestore writes
-        let saveTimer;
-        window.saveDataDebounced = () => {
-            clearTimeout(saveTimer);
-            updateFirebaseStatus('Saving changes...', 'yellow');
-            saveTimer = setTimeout(window.saveData, 1500);
-        };
-        
-        window.loadRosterData = async (rosterId) => {
-            if (!isAuthReady || !rosterId) return;
-
-            currentRosterId = rosterId;
-            const rosterMeta = rosterList.find(r => r.id === rosterId);
-            currentRosterName = rosterMeta ? rosterMeta.name : "Unknown Roster";
-            
-            students = [];
-            mustBeTogether = [];
-            conflictConstraints = [];
-            
-            window.renderRosterSelector(); // Update name display immediately
-
-            try {
-                const docRef = getRosterDocRef(rosterId);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    students = data.students || [];
-                    mustBeTogether = data.mustBeTogether || []; 
-                    conflictConstraints = data.conflictConstraints || [];
-                    
-                    window.renderStudentList();
-                    updateFirebaseStatus(`Loaded roster: "${currentRosterName}"`, 'blue');
-                } else {
-                    console.error("Roster document not found for ID:", rosterId);
-                    updateFirebaseStatus(`Roster "${currentRosterId.substring(0, 8)}" not found. Creating default.`, 'red');
-                    window.addDefaultStudents();
-                    // Since it wasn't found, save the new default state
-                    window.saveData(); 
-                }
-            } catch (e) {
-                console.error("Error loading roster data: ", e);
-                updateFirebaseStatus(`Error loading roster: ${e.message}`, 'red');
-                window.addDefaultStudents(); 
-            }
-        };
-
-        const loadRosterList = async () => {
-            if (!isAuthReady) return;
-
-            try {
-                const colRef = getRosterCollectionRef();
-                const snapshot = await getDocs(colRef);
-
-                rosterList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    name: doc.data().name || `Untitled Roster (${doc.id.substring(0, 5)})`
-                }));
-
-                if (rosterList.length === 0) {
-                    await window.createNewRoster('Class Roster 1');
-                } else {
-                    // Load the first roster in the list by default
-                    await window.loadRosterData(rosterList[0].id);
-                }
-            } catch (e) {
-                console.error("Error loading roster list: ", e);
-                updateFirebaseStatus(`Error fetching roster list: ${e.message}`, 'red');
-                // Fallback to anonymous local state if database fails
-                window.createNewRoster('Local Roster', false);
-            }
-        };
-
-        window.createNewRoster = async (name, saveToDb = true) => {
-            if (rosterList.length >= MAX_ROSTERS && saveToDb) {
-                window.showMessage('error', `You can only save up to ${MAX_ROSTERS} rosters.`);
-                return;
-            }
-            
-            const newRosterId = generateId();
-            const newRosterName = name || `New Roster ${rosterList.length + 1}`;
-
-            // Reset current state to empty for the new roster
-            students = [];
-            mustBeTogether = [];
-            conflictConstraints = [];
-            window.addDefaultStudents();
-
-            if (saveToDb && isAuthReady) {
-                try {
-                    const docRef = getRosterDocRef(newRosterId);
-                    await setDoc(docRef, { 
-                        name: newRosterName,
-                        students: students, 
-                        mustBeTogether: mustBeTogether, 
-                        conflictConstraints: conflictConstraints,
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (e) {
-                    console.error("Error creating new roster:", e);
-                    updateFirebaseStatus(`Error creating new roster: ${e.message}`, 'red');
-                }
-            }
-            
-            // Update local list and switch to the new roster
-            rosterList.push({ id: newRosterId, name: newRosterName });
-            await window.loadRosterData(newRosterId);
-            window.showMessage('success', `Created new roster: "${newRosterName}"`);
-        };
-        
-        window.renameRoster = async () => {
-            const newName = prompt("Enter the new name for the current roster:", currentRosterName);
-            if (newName && newName.trim() !== currentRosterName) {
-                currentRosterName = newName.trim();
-                const rosterMeta = rosterList.find(r => r.id === currentRosterId);
-                if (rosterMeta) rosterMeta.name = currentRosterName;
-                
-                window.renderRosterSelector(); 
-                await window.saveData();
-                window.showMessage('success', `Roster renamed to: "${currentRosterName}"`);
-            }
-        };
-
-        window.deleteCurrentRoster = async () => {
-            if (!currentRosterId) return;
-
-            if (!confirmAction(`Are you sure you want to permanently delete the roster: "${currentRosterName}"?`)) {
-                return;
-            }
-            
-            try {
-                const docRef = getRosterDocRef(currentRosterId);
-                await deleteDoc(docRef);
-                
-                rosterList = rosterList.filter(r => r.id !== currentRosterId);
-                
-                if (rosterList.length > 0) {
-                    await window.loadRosterData(rosterList[0].id);
-                    window.showMessage('success', `Roster deleted. Loaded next roster: "${currentRosterName}"`);
-                } else {
-                    // No rosters left, create a new default one
-                    currentRosterId = null;
-                    await window.createNewRoster('Class Roster 1');
-                    window.showMessage('success', 'Roster deleted. A new default roster was created.');
-                }
-            } catch (e) {
-                console.error("Error deleting roster:", e);
-                updateFirebaseStatus(`Error deleting roster: ${e.message}`, 'red');
-            }
-        };
-        
-        const initializeFirebase = async () => {
-            if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
-                // --- FIX: Setting log level to DEBUG for better visibility ---
-                setLogLevel('debug'); 
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                updateFirebaseStatus('Authenticating...', 'yellow');
-
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        isAuthReady = true;
-                        document.getElementById('user-id-display').textContent = userId.substring(0, 8) + '...';
-                        // --- FIX: Update status upon successful authentication
-                        updateFirebaseStatus(`Authenticated (User: ${userId.substring(0, 8)}...). Loading data.`, 'blue');
-                        await loadRosterList();
-                    } else {
-                        try {
-                             if (initialAuthToken) {
-                                await signInWithCustomToken(auth, initialAuthToken);
-                            } else {
-                                await signInAnonymously(auth);
-                            }
-                        } catch (error) {
-                            console.error("Authentication failed:", error);
-                            isAuthReady = false;
-                            updateFirebaseStatus('Auth failed. Data not saved.', 'red');
-                            window.createNewRoster('Local Roster', false);
-                        }
-                    }
-                });
-            } else {
-                console.error("Firebase configuration is missing. Data persistence disabled.");
-                updateFirebaseStatus('Persistence disabled (Config missing).', 'red');
-                window.createNewRoster('Local Roster', false); 
-            }
-        };
-        // --- END FIREBASE SETUP ---
-        
-        // --- UI RENDERING AND LOGIC (MODIFIED FOR MULTI-STUDENT CONFLICTS) ---
-        
-        // Helper for confirmation dialogs (since alert/confirm are forbidden)
-        const confirmAction = (message) => {
-            const result = window.prompt(message + " Type 'YES' to proceed.");
-            return result && result.toUpperCase() === 'YES';
-        };
-
-        window.renderRosterSelector = () => {
-            const selectorContainer = document.getElementById('roster-selector-container');
-            const currentRosterText = document.getElementById('current-roster-name');
-            
-            currentRosterText.textContent = currentRosterName;
-
-            const options = rosterList.map(r => 
-                `<option value="${r.id}" ${r.id === currentRosterId ? 'selected' : ''}>${r.name}</option>`
-            ).join('');
-
-            selectorContainer.innerHTML = `
-                <select onchange="window.loadRosterData(this.value)" class="dropdown max-w-xs p-2 text-sm">
-                    ${options}
-                </select>
-            `;
-            
-            // Disable delete if only one roster remains
-            const deleteBtn = document.getElementById('delete-roster-btn');
-            if (deleteBtn) {
-                deleteBtn.disabled = rosterList.length <= 1;
-                deleteBtn.classList.toggle('opacity-50', rosterList.length <= 1);
-                deleteBtn.title = rosterList.length <= 1 ? "Cannot delete the only remaining roster." : "Delete this roster permanently.";
-            }
-            
-            // Disable create new if max limit is reached
-            const createBtn = document.getElementById('create-roster-btn');
-            if (createBtn) {
-                createBtn.disabled = rosterList.length >= MAX_ROSTERS;
-                createBtn.classList.toggle('opacity-50', rosterList.length >= MAX_ROSTERS);
-                createBtn.title = rosterList.length >= MAX_ROSTERS ? `Maximum of ${MAX_ROSTERS} rosters reached.` : "Create a new, empty class roster.";
-            }
-        };
-
-
-        const renderBehaviorDropdown = (studentId, currentVal) => {
-            let options = BEHAVIOR_OPTIONS.map(val => 
-                `<option value="${val}" ${currentVal == val ? 'selected' : ''}>${val}</option>`
-            ).join('');
-            return `<select onchange="window.updateStudent('${studentId}', 'behavior', this.value); window.saveDataDebounced()" class="dropdown text-sm">${options}</select>`;
-        };
-
-        const renderAcademicDropdown = (studentId, currentVal) => {
-            let options = ACADEMIC_OPTIONS.map(val => 
-                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
-            ).join('');
-            return `<select onchange="window.updateStudent('${studentId}', 'academics', this.value); window.saveDataDebounced()" class="dropdown text-sm">${options}</select>`;
-        };
-        
-        const renderRoleDropdown = (studentId, currentVal) => {
-            let options = ROLE_OPTIONS.map(val => 
-                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
-            ).join('');
-            return `<select onchange="window.updateStudent('${studentId}', 'role', this.value); window.saveDataDebounced()" class="dropdown text-sm">${options}</select>`;
-        };
-        
         window.renderStudentList = () => {
             const listContainer = document.getElementById('student-list');
             listContainer.innerHTML = '';
-            
+
             const emptyMsg = document.getElementById('empty-roster-message');
             students.length === 0 ? emptyMsg.classList.remove('hidden') : emptyMsg.classList.add('hidden');
 
             students.forEach(student => {
                 const row = document.createElement('tr');
-                row.className = 'hover:bg-slate-100'; 
+                row.className = 'hover:bg-slate-100';
                 row.innerHTML = `
                     <td class="p-3 whitespace-nowrap">
-                        <input type="text" value="${student.name}" onchange="window.updateStudent('${student.id}', 'name', this.value); window.saveDataDebounced()" class="input-field max-w-40 text-sm font-medium text-gray-900"/>
+                        <input type="text" value="${student.name}" onchange="window.updateStudent('${student.id}', 'name', this.value); window.renderStudentList()" class="input-field max-w-40 text-sm font-medium text-gray-900"/>
                     </td>
                     <td class="p-3 whitespace-nowrap">
                         ${renderBehaviorDropdown(student.id, student.behavior)}
@@ -499,7 +161,7 @@
                         ${renderRoleDropdown(student.id, student.role)}
                     </td>
                     <td class="p-3 whitespace-nowrap text-sm font-medium">
-                        <button onclick="window.removeStudent('${student.id}'); window.saveDataDebounced()" class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition">
+                        <button onclick="window.removeStudent('${student.id}')" class="text-red-600 hover:text-red-900 p-1 rounded-full hover:bg-red-50 transition">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>
                     </td>
@@ -509,14 +171,36 @@
             window.renderConstraintSelectors();
         };
 
+        const renderBehaviorDropdown = (studentId, currentVal) => {
+            let options = BEHAVIOR_OPTIONS.map(val =>
+                `<option value="${val}" ${currentVal == val ? 'selected' : ''}>${val}</option>`
+            ).join('');
+            return `<select onchange="window.updateStudent('${studentId}', 'behavior', this.value); window.renderStudentList()" class="dropdown text-sm">${options}</select>`;
+        };
+
+        const renderAcademicDropdown = (studentId, currentVal) => {
+            let options = ACADEMIC_OPTIONS.map(val =>
+                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
+            ).join('');
+            return `<select onchange="window.updateStudent('${studentId}', 'academics', this.value); window.renderStudentList()" class="dropdown text-sm">${options}</select>`;
+        };
+
+        const renderRoleDropdown = (studentId, currentVal) => {
+            let options = ROLE_OPTIONS.map(val =>
+                `<option value="${val}" ${currentVal === val ? 'selected' : ''}>${val}</option>`
+            ).join('');
+            return `<select onchange="window.updateStudent('${studentId}', 'role', this.value); window.renderStudentList()" class="dropdown text-sm">${options}</select>`;
+        };
+
+
         const renderSingleStudentSelector = (currentStudentId, constraintIndex, memberIndex, type) => {
-            const studentOptions = students.map(s => 
+            const studentOptions = students.map(s =>
                 `<option value="${s.id}" ${s.id === currentStudentId ? 'selected' : ''}>${s.name}</option>`
             ).join('');
-            
-            const onChangeHandler = type === 'together' 
-                ? `window.updateTogetherConstraint(${constraintIndex}, ${memberIndex}, this.value); window.saveDataDebounced()`
-                : `window.updateSeparationConstraint(${constraintIndex}, ${memberIndex}, this.value); window.saveDataDebounced()`;
+
+            const onChangeHandler = type === 'together'
+                ? `window.updateTogetherConstraint(${constraintIndex}, ${memberIndex}, this.value); window.renderConstraintSelectors()`
+                : `window.updateSeparationConstraint(${constraintIndex}, ${memberIndex}, this.value); window.renderConstraintSelectors()`;
 
             return `
                 <select class="dropdown w-full text-sm" onchange="${onChangeHandler}">
@@ -525,18 +209,18 @@
                 </select>
             `;
         };
-        
+
         window.renderConstraintSelectors = () => {
             const togetherList = document.getElementById('must-be-together-list');
             const conflictList = document.getElementById('conflict-constraints-list');
-            
+
             // Renders Must Be Together (Pairs)
-            togetherList.innerHTML = mustBeTogether.map((constraint, index) => 
+            togetherList.innerHTML = mustBeTogether.map((constraint, index) =>
                 renderTogetherConstraintRow(constraint, index)
             ).join('');
 
             // Renders Must Be Separated (Groups)
-            conflictList.innerHTML = conflictConstraints.map((constraint, index) => 
+            conflictList.innerHTML = conflictConstraints.map((constraint, index) =>
                 renderSeparationConstraintGroup(constraint, index)
             ).join('');
         };
@@ -549,7 +233,7 @@
                         <span class="text-xs text-gray-500 block text-center font-semibold text-teal-600">MUST BE WITH</span>
                         ${renderSingleStudentSelector(constraint[1], index, 1, 'together')}
                     </div>
-                    <button onclick="window.removeConstraint(${index}, 'together'); window.saveDataDebounced()" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove constraint">
+                    <button onclick="window.removeConstraint(${index}, 'together'); window.renderConstraintSelectors()" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove constraint">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
@@ -563,19 +247,19 @@
                 <div class="p-3 bg-red-50 rounded-lg border border-red-200">
                     <div class="flex justify-between items-start mb-2">
                         <h4 class="text-md font-semibold text-red-700">Separation Group ${constraintIndex + 1}</h4>
-                        <button onclick="window.removeConstraint(${constraintIndex}, 'conflict'); window.saveDataDebounced()" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove entire separation group">
+                        <button onclick="window.removeConstraint(${constraintIndex}, 'conflict'); window.renderConstraintSelectors()" class="text-red-500 hover:text-red-700 p-1 transition" title="Remove entire separation group">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                         </button>
                     </div>
 
                     <p class="text-xs text-red-600 mb-2 font-medium">No two students from this list can be in the same team.</p>
-                    
+
                     <div id="separation-members-${constraintIndex}" class="space-y-1 mb-3">
                         ${constraint.map((id, memberIndex) => `
                             <div class="flex items-center space-x-1">
                                 <span class="text-sm w-5 text-center text-red-500 font-bold">#${memberIndex + 1}</span>
                                 ${renderSingleStudentSelector(id, constraintIndex, memberIndex, 'conflict')}
-                                <button onclick="window.removeMemberFromSeparationConstraint(${constraintIndex}, ${memberIndex}); window.saveDataDebounced()" 
+                                <button onclick="window.removeMemberFromSeparationConstraint(${constraintIndex}, ${memberIndex}); window.renderConstraintSelectors()"
                                         class="text-gray-400 hover:text-red-500 p-1 transition" title="Remove student">
                                     <i class="fas fa-times text-sm"></i>
                                 </button>
@@ -583,7 +267,7 @@
                         `).join('')}
                     </div>
 
-                    <button onclick="window.addMemberToSeparationConstraint(${constraintIndex}); window.saveDataDebounced()" 
+                    <button onclick="window.addMemberToSeparationConstraint(${constraintIndex}); window.renderConstraintSelectors()"
                             class="btn-secondary text-xs bg-red-100 text-red-600 hover:bg-red-200 mt-2">
                         + Add Student to Group
                     </button>
@@ -601,20 +285,19 @@
             };
             students.push(newStudent);
             window.renderStudentList();
-            window.saveDataDebounced(); 
         };
-        
+
         window.addDefaultStudents = () => {
             if (students.length === 0) {
-                for (let i = 0; i < 6; i++) {
-                    students.push({
-                        id: generateId(),
-                        name: `Student ${i + 1}`,
-                        behavior: 3,
-                        academics: 'C',
-                        role: 'Other'
-                    });
-                }
+                // Initialize with 6 default students for a fresh start
+                students = [
+                    { id: generateId(), name: 'Student 1', behavior: 5, academics: 'A', role: 'Leader' },
+                    { id: generateId(), name: 'Student 2', behavior: 1, academics: 'E', role: 'Victim' },
+                    { id: generateId(), name: 'Student 3', behavior: 3, academics: 'C', role: 'Other' },
+                    { id: generateId(), name: 'Student 4', behavior: 4, academics: 'B', role: 'Bully' },
+                    { id: generateId(), name: 'Student 5', behavior: 2, academics: 'D', role: 'Other' },
+                    { id: generateId(), name: 'Student 6', behavior: 5, academics: 'A', role: 'Leader' }
+                ];
             }
             window.renderStudentList();
         }
@@ -623,6 +306,7 @@
             const student = students.find(s => s.id === id);
             if (student) {
                 student[key] = key === 'behavior' ? parseInt(value) : value;
+                // Re-render student list immediately only if the name changed, otherwise the dropdown update handles it.
                 if (key === 'name') {
                     window.renderStudentList();
                 }
@@ -631,39 +315,38 @@
 
         window.removeStudent = (id) => {
             students = students.filter(s => s.id !== id);
-            
+
             // Clean up mustBeTogether
             mustBeTogether = mustBeTogether.filter(c => !c.includes(id));
-            
+
             // Clean up conflictConstraints (multi-student)
             conflictConstraints = conflictConstraints.map(c => c.filter(memberId => memberId !== id)).filter(c => c.length >= 2);
 
             window.renderStudentList();
         };
-        
+
         window.addConstraint = (type) => {
             if (type === 'together') {
                 mustBeTogether.push(["", ""]);
             } else {
                 // Start a new multi-student separation constraint with 2 empty slots
-                conflictConstraints.push(["", ""]); 
+                conflictConstraints.push(["", ""]);
             }
             window.renderConstraintSelectors();
-            window.saveDataDebounced(); 
         };
 
         window.updateTogetherConstraint = (constraintIndex, studentIndexInConstraint, studentId) => {
             if (mustBeTogether[constraintIndex]) {
                 mustBeTogether[constraintIndex][studentIndexInConstraint] = studentId;
             }
-            window.saveDataDebounced();
+            // renderConstraintSelectors is called in the onchange handler of the select element
         };
 
         window.updateSeparationConstraint = (constraintIndex, memberIndex, studentId) => {
             if (conflictConstraints[constraintIndex]) {
                 conflictConstraints[constraintIndex][memberIndex] = studentId;
             }
-            window.saveDataDebounced();
+            // renderConstraintSelectors is called in the onchange handler of the select element
         };
 
         window.addMemberToSeparationConstraint = (constraintIndex) => {
@@ -698,7 +381,7 @@
 
         const hasConflict = (newStudent, currentGroup, allMultiSeparationConstraints) => {
             const newStudentId = newStudent.id;
-            
+
             // --- 1. Check for automatic Bully/Victim conflict ---
             const isNewStudentBully = newStudent.role === 'Bully';
             const isNewStudentVictim = newStudent.role === 'Victim';
@@ -728,7 +411,7 @@
 
             return false;
         };
-        
+
         const calculateGroupScore = (group) => {
             let totalBehavior = 0;
             let totalAcademic = 0;
@@ -767,19 +450,19 @@
                 window.showMessage("error", "Please check your inputs: add students and ensure the number of groups is valid.");
                 return;
             }
-            
+
             const generateButton = document.getElementById('generate-button');
             const originalHtml = generateButton.innerHTML;
             generateButton.disabled = true;
             generateButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating...</span>';
-            
+
             setTimeout(() => {
                 const allStudents = students.map(s => ({
                     ...s,
                     behavior: parseInt(s.behavior),
                     academicScore: getAcademicScore(s.academics)
                 }));
-                
+
                 // Filter and clean constraints
                 const validStudents = new Set(allStudents.map(s => s.id));
                 const isValidConstraintPair = (c) => validStudents.has(c[0]) && validStudents.has(c[1]);
@@ -799,7 +482,7 @@
                     const s2 = allStudents.find(s => s.id === id2);
 
                     if (assignedStudentIds.has(id1) || assignedStudentIds.has(id2)) {
-                        continue; 
+                        continue;
                     }
 
                     // Check for conflicts between the two students themselves and with existing partial groups
@@ -808,7 +491,7 @@
                          success = false;
                          break;
                     }
-                    
+
                     let bestGroupIndex = -1;
                     let minSize = Infinity;
 
@@ -834,11 +517,11 @@
                         break;
                     }
                 }
-                
+
                 // --- 2. Assign Remaining Students using Global Balance (Standard Deviation) ---
                 if (success) {
                     let unassignedStudents = allStudents.filter(s => !assignedStudentIds.has(s.id));
-                    
+
                     // Prioritize placing high-impact students (Leaders, Bully/Victim, high combined score) first
                     unassignedStudents.sort((a, b) => {
                         const roleOrder = (role) => {
@@ -847,33 +530,33 @@
                             return 1;
                         };
                         if (roleOrder(a.role) !== roleOrder(b.role)) return roleOrder(b.role) - roleOrder(a.role);
-                        
+
                         return (b.behavior + b.academicScore) - (a.behavior + a.academicScore);
                     });
-                    
+
                     for (const student of unassignedStudents) {
                         let bestGroupIndex = -1;
                         let minOverallStdDev = Infinity;
-                        let minGroupSize = Infinity; 
-                        let minLeaderCount = Infinity; 
+                        let minGroupSize = Infinity;
+                        let minLeaderCount = Infinity;
 
                         for (let i = 0; i < numGroups; i++) {
                             const currentGroup = groups[i];
-                            
+
                             // CHECK CONFLICTS with the multi-student separation constraints
                             if (hasConflict(student, currentGroup, validConflictConstraints)) {
                                 continue;
                             }
 
-                            const hypotheticalGroups = groups.map((g, index) => 
+                            const hypotheticalGroups = groups.map((g, index) =>
                                 index === i ? [...g, student] : g
                             );
 
                             const hypotheticalGroupStats = hypotheticalGroups.map(g => calculateGroupScore(g));
-                            
+
                             const currentStdDev = calculateStdDev(hypotheticalGroupStats);
                             const tentativeStats = hypotheticalGroupStats[i];
-                            
+
                             const groupSize = tentativeStats.size;
                             const leaderCount = tentativeStats.leaderCount;
 
@@ -885,7 +568,7 @@
                                 minOverallStdDev = currentStdDev;
                                 minGroupSize = groupSize;
                                 minLeaderCount = leaderCount;
-                            } 
+                            }
                             else if (Math.abs(currentStdDev - minOverallStdDev) < epsilon && groupSize < minGroupSize) {
                                 bestGroupIndex = i;
                                 minGroupSize = groupSize;
@@ -914,13 +597,13 @@
                 if (success) {
                     lastGeneratedGroups = groups;
                     window.renderGroupResults(groups);
-                    window.showMessage("success", `Successfully generated ${numGroups} globally balanced groups for "${currentRosterName}".`);
-                    
+                    window.showMessage("success", `Successfully generated ${numGroups} globally balanced groups for the local roster.`);
+
                 } else {
                     lastGeneratedGroups = [];
                     document.getElementById('results-card').style.display = 'none';
                 }
-            }, 50); 
+            }, 50);
         };
 
 
@@ -931,12 +614,12 @@
 
             groups.forEach((group, index) => {
                 const { totalBehavior, totalAcademic, leaderCount } = calculateGroupScore(group);
-                
+
                 const groupElement = document.createElement('div');
-                groupElement.className = 'bg-teal-50 p-4 rounded-lg border border-teal-200'; 
+                groupElement.className = 'bg-teal-50 p-4 rounded-lg border border-teal-200';
                 groupElement.innerHTML = `
                     <h3 class="text-lg font-semibold text-teal-800 mb-2">Group ${index + 1} <span class="text-sm font-normal text-teal-600">(${group.length} students)</span></h3>
-                    
+
                     <div class="flex flex-wrap gap-4 text-sm mb-3">
                         <div class="flex items-center text-gray-700">
                             <i class="fas fa-face-smile w-4 h-4 mr-1 text-green-500"></i>
@@ -958,7 +641,7 @@
                             if (['Leader', 'Bully', 'Victim'].includes(s.role)) {
                                 roleText = `<span class="text-xs ml-1 font-semibold text-gray-600">(${s.role})</span>`;
                             }
-                            
+
                             return `
                                 <li class="text-sm">
                                     ${s.name} <span class="font-bold text-teal-700">(${s.behavior}${s.academics})</span>${roleText}
@@ -974,7 +657,7 @@
         window.showMessage = (type, message) => {
             const box = document.getElementById('message-box');
             box.textContent = message;
-            box.className = 'p-3 rounded-lg text-sm font-medium transition duration-300'; 
+            box.className = 'p-3 rounded-lg text-sm font-medium transition duration-300';
 
             if (type === 'error') {
                 box.classList.add('bg-red-100', 'border-red-500', 'text-red-800', 'border');
@@ -1013,7 +696,7 @@
             document.body.removeChild(link);
             window.showMessage('success', 'Groups successfully exported to CSV.');
         };
-        
+
         window.exportToPDF = async () => {
             if (lastGeneratedGroups.length === 0) {
                 window.showMessage('warning', 'Please generate groups first before attempting to export.');
@@ -1021,31 +704,31 @@
             }
 
             const resultsCard = document.getElementById('results-card');
-            const exportActions = document.getElementById('export-actions-container'); 
+            const exportActions = document.getElementById('export-actions-container');
             const pdfButton = document.getElementById('pdf-export-content');
-            
+
             pdfButton.innerHTML = '<div class="spinner"></div><span class="ml-2">Generating PDF...</span>';
             if (exportActions) exportActions.style.pointerEvents = 'none';
 
             try {
-                const JsPDF = window.jspdf.jsPDF; 
+                const JsPDF = window.jspdf.jsPDF;
 
                 const exportButtons = document.getElementById('export-actions-container');
                 exportButtons.classList.add('hidden');
 
                 const canvas = await html2canvas(resultsCard, {
-                    scale: 2, 
+                    scale: 2,
                     logging: false,
                     allowTaint: true,
                     useCORS: true,
-                    backgroundColor: '#ffffff' 
+                    backgroundColor: '#ffffff'
                 });
 
                 exportButtons.classList.remove('hidden');
 
                 const imgData = canvas.toDataURL('image/png');
-                const imgWidth = 200; 
-                const pageHeight = 295; 
+                const imgWidth = 200;
+                const pageHeight = 295;
                 const imgHeight = canvas.height * imgWidth / canvas.width;
                 let heightLeft = imgHeight;
                 let position = 0;
@@ -1075,52 +758,16 @@
         };
 
         // --- Execution Start ---
-        initializeFirebase();
+        // Load default students immediately since there is no database to wait for.
+        window.addDefaultStudents();
 
     </script>
-    
+
 
     <div class="max-w-7xl mx-auto space-y-8">
         <header class="text-center py-6 bg-teal-600 rounded-xl shadow-lg relative">
             <h1 class="text-3xl sm:text-4xl font-extrabold text-white">🗂️ Balanced Student Group Generator</h1>
-            <!-- Status and User ID for data persistence visibility -->
-            <div class="absolute top-2 right-2 text-right">
-                <p id="user-id-label" class="text-white text-xs opacity-80">
-                    User ID: <span id="user-id-display" class="font-mono font-bold">...</span>
-                </p>
-                <div id="firebase-status" class="font-medium mt-1 p-1 rounded-md text-xs border bg-gray-100 text-gray-800 border-gray-500">
-                    Initializing database...
-                </div>
-            </div>
         </header>
-        
-        <!-- Roster Management Section -->
-        <div class="card p-4 bg-white border border-slate-200">
-            <h2 class="text-xl font-bold text-gray-800 mb-2 flex items-center">
-                <i class="fas fa-book-open mr-2 text-teal-600"></i>
-                Roster Management
-            </h2>
-            <div class="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
-                <div class="flex items-center space-x-2">
-                    <label class="text-sm font-medium text-gray-700 whitespace-nowrap">Current Roster:</label>
-                    <div id="roster-selector-container">
-                        <select class="dropdown max-w-xs p-2 text-sm"><option>Loading...</option></select>
-                    </div>
-                </div>
-                <div class="flex space-x-2">
-                    <button onclick="window.renameRoster()" class="btn-secondary text-sm flex items-center">
-                        <i class="fas fa-edit mr-1"></i> Rename <span id="current-roster-name" class="font-bold ml-1">...</span>
-                    </button>
-                    <button id="create-roster-btn" onclick="window.createNewRoster()" class="btn-secondary text-sm flex items-center">
-                        <i class="fas fa-plus mr-1"></i> New
-                    </button>
-                    <button id="delete-roster-btn" onclick="window.deleteCurrentRoster()" class="btn-secondary text-sm flex items-center bg-red-100 text-red-700 hover:bg-red-200" title="Delete this roster permanently.">
-                        <i class="fas fa-trash-alt mr-1"></i> Delete
-                    </button>
-                </div>
-            </div>
-        </div>
-
 
         <div id="message-box" class="hidden p-3 rounded-lg text-sm font-medium transition duration-300"></div>
 
@@ -1146,7 +793,7 @@
                         </tbody>
                     </table>
                 </div>
-                
+
                 <p id="empty-roster-message" class="text-center text-gray-500 py-8 hidden">
                     No students added yet. Click "Add Student" to begin building your roster.
                 </p>
@@ -1160,7 +807,7 @@
             </div>
 
             <div class="lg:col-span-1 space-y-6">
-                
+
                 <div class="card">
                     <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
                         <i class="fas fa-handshake mr-2 text-teal-600"></i>
@@ -1180,7 +827,7 @@
                         Must Be Separated (Groups)
                     </h2>
                     <p class="text-sm text-gray-600 mb-3">
-                        Define groups of 2 or more students where **no two students** from the group can be placed in the same resulting team. 
+                        Define groups of 2 or more students where **no two students** from the group can be placed in the same resulting team.
                         <span class="font-semibold text-red-500">(Bullies and Victims will also be separated automatically.)</span>
                     </p>
                     <div id="conflict-constraints-list" class="space-y-3 mb-4">
@@ -1189,7 +836,7 @@
                         + Add Separation Group
                     </button>
                 </div>
-                
+
                 <div class="card">
                     <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
                         <i class="fas fa-cogs mr-2 text-teal-600"></i>
@@ -1199,13 +846,13 @@
                     <input type="number" id="num-groups" value="4" min="1" class="input-field mb-4" />
 
                     <label class="block text-2xl font-extrabold text-gray-700 mb-3">GENERATE GROUPS</label>
-                    
+
                     <button id="generate-button" onclick="window.generateGroups()" class="btn-primary w-full flex items-center justify-center">
                         <i class="fas fa-sitemap mr-3"></i>
                         GENERATE GROUPS NOW
                     </button>
                 </div>
-                
+
             </div>
         </div>
 
@@ -1228,6 +875,6 @@
             </div>
         </div>
     </div>
-    
+
 </body>
 </html>
